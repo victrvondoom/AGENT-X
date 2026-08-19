@@ -10,10 +10,19 @@ what existed before erasure.
 
   1. (before the txn) anchor t_before = cluster_logical_timestamp() — the AS OF SYSTEM TIME proof.
 
+Before any of that, erasure can be REFUSED. GDPR Art. 17(3) carves the right to erasure out
+where processing is necessary to comply with a legal obligation, or to establish, exercise or
+defend a legal claim. A subject under legal hold raises LegalHold and nothing is touched — the
+check runs before the anchor is taken, so a refusal leaves no half-started erasure behind. Most
+erasure systems implement only the right; implementing the exception is what makes this one
+usable in a regulated setting.
+
 The erasure itself is then ONE serializable CockroachDB transaction (steps 2–5 commit together, so
 memory is never left in a half-erased state):
   2. hard-delete the entity's SUBJECT-EXCLUSIVE knowledge — documents, graph nodes, and every
-     edge touching them,
+     edge touching them, EXCEPT anything marked authoritative: a statute or regulator charter
+     holds no personal data, so erasing a person must destroy their evidence and leave the law
+     standing. The retained count is signed into the certificate,
   3. INVALIDATE (not delete) SHARED nodes — entities that also belong to a surviving subject stay,
      with the erased subject removed from their provenance, so no other subject's memory is corrupted,
   4. crypto-shred the subject's data key, making any residual ciphertext (MVCC history, backups, S3)
@@ -28,10 +37,83 @@ import re
 from db import store
 
 
+class LegalHold(Exception):
+    """Raised when erasure is refused because a retention obligation is in force.
+
+    GDPR Art. 17(3) carves the right to erasure out where processing is necessary to
+    comply with a legal obligation (b) or to establish, exercise or defend a legal
+    claim (e). Refusing loudly is the point: a system that quietly kept the data would
+    be indistinguishable from one that failed to delete it.
+    """
+
+    def __init__(self, subject: str, reason: str | None, until):
+        self.subject, self.reason, self.until = subject, reason, until
+        super().__init__(f"erasure refused — {subject} is under legal hold")
+
+
+def hold_status(conn, workspace: str, subject: str) -> dict | None:
+    """Return the ACTIVE hold on a subject, or None. A hold with a past `hold_until`
+    has lapsed and no longer blocks erasure."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT hold_reason, hold_until::string, held_at::string FROM subject_keys "
+            "WHERE workspace = %s AND subject = %s "
+            "AND held_at IS NOT NULL AND (hold_until IS NULL OR hold_until > now())",
+            (workspace, subject),
+        )
+        row = cur.fetchone()
+    if not row:
+        return None
+    return {"reason": row[0], "until": row[1], "since": row[2]}
+
+
+def set_hold(subject: str, reason: str, until: str | None = None,
+             workspace: str = "default") -> dict:
+    """Place a subject under legal hold. Erasure is refused until it is released or lapses."""
+    with store.connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO subject_keys (workspace, subject, hold_reason, hold_until, held_at) "
+            "VALUES (%s, %s, %s, %s::TIMESTAMPTZ, now()) "
+            "ON CONFLICT (workspace, subject) DO UPDATE SET "
+            "  hold_reason = excluded.hold_reason, hold_until = excluded.hold_until, held_at = now()",
+            (workspace, subject, reason, until),
+        )
+        cur.execute(
+            "INSERT INTO timeline (workspace, kind, subject, detail) VALUES (%s, 'hold', %s, %s)",
+            (workspace, subject,
+             f"legal hold placed on {subject}: {reason}" + (f" (until {until})" if until else "")),
+        )
+    return {"subject": subject, "workspace": workspace, "reason": reason, "until": until, "held": True}
+
+
+def release_hold(subject: str, workspace: str = "default") -> dict:
+    """Lift a legal hold. Erasure becomes permitted again; the release is recorded."""
+    with store.connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE subject_keys SET hold_reason = NULL, hold_until = NULL, held_at = NULL "
+            "WHERE workspace = %s AND subject = %s",
+            (workspace, subject),
+        )
+        n = cur.rowcount
+        cur.execute(
+            "INSERT INTO timeline (workspace, kind, subject, detail) VALUES (%s, 'hold', %s, %s)",
+            (workspace, subject, f"legal hold released on {subject} — erasure permitted"),
+        )
+    return {"subject": subject, "workspace": workspace, "released": n > 0}
+
+
 def forget(subject: str, workspace: str = "default") -> dict:
-    """Erase `subject` from a workspace's memory. Returns a measured receipt."""
+    """Erase `subject` from a workspace's memory. Returns a measured receipt.
+
+    Raises LegalHold if a retention obligation is in force — checked BEFORE the
+    anchor is taken, so a refused erasure leaves no trace of a half-started one.
+    """
     with store.connect() as conn:
-        receipt = {"docs": 0, "nodes": 0, "edges": 0, "invalidated": 0}
+        held = hold_status(conn, workspace, subject)
+        if held:
+            raise LegalHold(subject, held["reason"], held["until"])
+
+        receipt = {"docs": 0, "nodes": 0, "edges": 0, "invalidated": 0, "authoritative_retained": 0}
 
         # Anchor the pre-deletion moment BEFORE the deleting transaction opens (autocommit), so the
         # deletes commit at a STRICTLY LATER timestamp and an AS OF SYSTEM TIME t_before read sees the
@@ -45,6 +127,10 @@ def forget(subject: str, workspace: str = "default") -> dict:
         with conn.transaction():
             with conn.cursor() as cur:
                 # subject-exclusive nodes: subject is present AND is the ONLY distinct subject
+                # Authoritative material — statutes, regulator charters — carries no
+                # personal data. It is excluded from the cascade so that erasing a person
+                # destroys their evidence and LEAVES THE LAW STANDING. This is the
+                # difference between a thorough delete and a lawful one.
                 cur.execute(
                     """
                     SELECT id FROM nodes
@@ -52,10 +138,24 @@ def forget(subject: str, workspace: str = "default") -> dict:
                       AND %s::STRING = ANY(subjects)
                       AND array_length(array_remove(subjects, %s::STRING), 1) IS NULL
                       AND deleted_at IS NULL
+                      AND source_kind <> 'authoritative'
                     """,
                     (workspace, subject, subject),
                 )
                 exclusive = [r[0] for r in cur.fetchall()]
+
+                # Count what the exclusion spared, so the certificate can attest to it.
+                cur.execute(
+                    """
+                    SELECT count(*) FROM nodes
+                    WHERE workspace = %s
+                      AND %s::STRING = ANY(subjects)
+                      AND deleted_at IS NULL
+                      AND source_kind = 'authoritative'
+                    """,
+                    (workspace, subject),
+                )
+                receipt["authoritative_retained"] = cur.fetchone()[0]
 
                 if exclusive:
                     cur.execute(
@@ -80,8 +180,20 @@ def forget(subject: str, workspace: str = "default") -> dict:
                 )
                 receipt["invalidated"] = cur.rowcount
 
-                # the subject's documents
-                cur.execute("DELETE FROM documents WHERE workspace = %s AND subject = %s", (workspace, subject))
+                # The subject's documents — ALL of them, including any marked authoritative.
+                #
+                # The asymmetry with nodes above is deliberate. Node text is stored in
+                # plaintext, so an authoritative node genuinely survives and stays readable.
+                # Document content is sealed under this subject's DEK, and the next step
+                # destroys that key: a retained authoritative document would be a row nobody
+                # can ever decrypt, inflating the retention count with dead bytes and making
+                # the certificate claim something false. Deleting it is the honest outcome.
+                #
+                # In practice authoritative material belongs to its own subject (the statute,
+                # not the person), so a person's erasure never reaches it. This branch only
+                # fires when a regulation was mis-ingested under someone's name.
+                cur.execute("DELETE FROM documents WHERE workspace = %s AND subject = %s",
+                            (workspace, subject))
                 receipt["docs"] = cur.rowcount
 
                 # crypto-shred: destroy the subject's data key
@@ -96,12 +208,12 @@ def forget(subject: str, workspace: str = "default") -> dict:
                     """
                     INSERT INTO erasure_events
                       (workspace, subject, subject_salt, t_before, docs_removed, nodes_removed,
-                       edges_removed, nodes_invalidated)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                       edges_removed, nodes_invalidated, authoritative_retained)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
                     (workspace, subject, salt, t_before, receipt["docs"], receipt["nodes"],
-                     receipt["edges"], receipt["invalidated"]),
+                     receipt["edges"], receipt["invalidated"], receipt["authoritative_retained"]),
                 )
                 event_id = cur.fetchone()[0]
 
@@ -110,6 +222,7 @@ def forget(subject: str, workspace: str = "default") -> dict:
                     (workspace, subject,
                      f"erased {subject}: {receipt['nodes']} nodes, {receipt['edges']} edges, "
                      f"{receipt['docs']} docs deleted; {receipt['invalidated']} shared nodes retained; "
+                     f"{receipt['authoritative_retained']} authoritative sources retained; "
                      f"key crypto-shredded"),
                 )
 

@@ -120,6 +120,15 @@ def issue(receipt: dict, proof_prior: list, proof_absence: dict, issued_at: str)
             "document_content_crypto_shredded": shredded,
             "exclusive_graph_deleted": True,
             "subject_provenance_removed_from_shared_nodes": True,
+            # What separates a thorough delete from a lawful one: authoritative material
+            # (statutes, regulator charters) holds no personal data and is deliberately
+            # spared. The count is signed, so the certificate proves the erasure knew the
+            # difference rather than merely asserting it. Graph entities only — document
+            # content is sealed under the subject key this erasure destroys, so no document
+            # could be honestly claimed as retained.
+            "authoritative_graph_nodes_retained": receipt.get("authoritative_retained", 0),
+            "erasure_permitted": True,        # a subject under legal hold never reaches here
+            "legal_basis": "GDPR Art. 17(1) — no Art. 17(3) retention exemption was in force",
         },
         "issued_at": issued_at,
     }

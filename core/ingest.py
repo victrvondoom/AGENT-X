@@ -30,15 +30,25 @@ EXTRACT_SYSTEM = (
 )
 
 
-def ingest_document(subject: str, title: str, text: str, workspace: str = "default") -> dict:
-    """Ingest one document about `subject` in `workspace`. Returns a small receipt."""
+def ingest_document(subject: str, title: str, text: str, workspace: str = "default",
+                    source_kind: str = "user_evidence") -> dict:
+    """Ingest one document about `subject` in `workspace`. Returns a small receipt.
+
+    source_kind marks what the material IS, which decides whether erasure may touch it:
+      user_evidence  — a person's records. Erased with them.
+      authoritative  — a statute or regulator charter. No personal data, so a subject's
+                       erasure must leave it standing.
+      derived        — produced by the system from the above.
+    """
+    if source_kind not in ("user_evidence", "authoritative", "derived"):
+        raise ValueError(f"unknown source_kind: {source_kind}")
     with store.connect() as conn:
         blob = store.encrypt_for(conn, workspace, subject, text)
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO documents (workspace, subject, title, content_enc) "
-                "VALUES (%s, %s, %s, %s) RETURNING id",
-                (workspace, subject, title, blob),
+                "INSERT INTO documents (workspace, subject, title, content_enc, source_kind) "
+                "VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                (workspace, subject, title, blob, source_kind),
             )
             doc_id = cur.fetchone()[0]
 
@@ -56,17 +66,27 @@ def ingest_document(subject: str, title: str, text: str, workspace: str = "defau
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO nodes (workspace, name, type, description, embedding, doc_ids, subjects)
-                    VALUES (%s, %s, %s, %s, %s, ARRAY[%s]::UUID[], ARRAY[%s]::STRING[])
+                    INSERT INTO nodes (workspace, name, type, description, embedding, doc_ids,
+                                       subjects, source_kind)
+                    VALUES (%s, %s, %s, %s, %s, ARRAY[%s]::UUID[], ARRAY[%s]::STRING[], %s)
                     ON CONFLICT (workspace, name) DO UPDATE SET
                         description = COALESCE(EXCLUDED.description, nodes.description),
                         embedding   = EXCLUDED.embedding,
                         doc_ids     = array_cat(nodes.doc_ids, EXCLUDED.doc_ids),
                         subjects    = array_cat(nodes.subjects, EXCLUDED.subjects),
+                        -- Authority is sticky UPWARD. Coreference merges one entity from many
+                        -- documents, so a node named in both a statute and a person's file must
+                        -- resolve to authoritative: the failure mode of guessing wrong is
+                        -- deleting law, which is unrecoverable, versus retaining a node that
+                        -- could have gone, which is visible and fixable.
+                        source_kind = CASE
+                            WHEN nodes.source_kind = 'authoritative'
+                              OR EXCLUDED.source_kind = 'authoritative' THEN 'authoritative'
+                            ELSE EXCLUDED.source_kind END,
                         deleted_at  = NULL
                     RETURNING id
                     """,
-                    (workspace, name, e.get("type"), desc, emb, doc_id, subject),
+                    (workspace, name, e.get("type"), desc, emb, doc_id, subject, source_kind),
                 )
                 name_to_id[name.lower()] = cur.fetchone()[0]
 

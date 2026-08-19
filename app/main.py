@@ -26,7 +26,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.ingest import ingest_document          # noqa: E402
 from core.ask import ask as ask_memory            # noqa: E402
-from core.forget import forget, prior_state, verify_gone  # noqa: E402
+from core.forget import (forget, prior_state, verify_gone,          # noqa: E402
+                         LegalHold, set_hold, release_hold, hold_status)
 from core import curation                         # noqa: E402
 from llm import client as llm_client              # noqa: E402
 from aws import certificate as cert               # noqa: E402
@@ -218,12 +219,20 @@ class IngestReq(BaseModel):
     subject: str
     title: str = ""
     text: str
+    source_kind: str = "user_evidence"   # user_evidence | authoritative | derived
     workspace: str = "default"
 
 
 class AskReq(BaseModel):
     query: str
     history: list | None = None
+    workspace: str = "default"
+
+
+class HoldReq(BaseModel):
+    subject: str
+    reason: str
+    until: str | None = None
     workspace: str = "default"
 
 
@@ -235,7 +244,10 @@ class ForgetReq(BaseModel):
 @app.post("/api/ingest")
 def api_ingest(r: IngestReq, _: None = Depends(require_auth)):
     try:
-        return ingest_document(r.subject, r.title or r.subject, r.text, _ws(r.workspace))
+        return ingest_document(r.subject, r.title or r.subject, r.text, _ws(r.workspace),
+                               r.source_kind)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except store.KeyDestroyed:
         raise HTTPException(status_code=409,
                             detail="this subject was permanently erased; the name cannot be re-onboarded")
@@ -243,11 +255,14 @@ def api_ingest(r: IngestReq, _: None = Depends(require_auth)):
 
 @app.post("/api/upload")
 async def api_upload(file: UploadFile = File(...), subject: str = Form(""),
+                     source_kind: str = Form("user_evidence"),
                      workspace: str = Form("default"), _: None = Depends(require_auth)):
     raw = (await file.read()).decode("utf-8", errors="ignore")
     subj = (subject or os.path.splitext(file.filename or "uploaded")[0])[:80]
     try:
-        return ingest_document(subj, file.filename or subj, raw, _ws(workspace))
+        return ingest_document(subj, file.filename or subj, raw, _ws(workspace), source_kind)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except store.KeyDestroyed:
         raise HTTPException(status_code=409,
                             detail="this subject was permanently erased; the name cannot be re-onboarded")
@@ -289,7 +304,17 @@ def source(name: str, workspace: str = "default"):
 @app.post("/api/forget")
 def api_forget(r: ForgetReq, _: None = Depends(require_auth)):
     ws = _ws(r.workspace)
-    receipt = forget(r.subject, ws)
+    try:
+        receipt = forget(r.subject, ws)
+    except LegalHold as e:
+        # 409, not 403: the request is well-formed and the caller is authorised —
+        # it conflicts with a retention obligation. The reason travels with the
+        # refusal so the refusal itself is auditable.
+        raise HTTPException(status_code=409, detail={
+            "error": "erasure_refused_legal_hold",
+            "subject": e.subject, "reason": e.reason, "until": e.until,
+            "basis": "GDPR Art. 17(3) — erasure does not apply where retention is legally required",
+        })
     prior = prior_state(r.subject, receipt["t_before"], ws)
     absence = verify_gone(r.subject, ws)
     certificate = cert.issue(receipt, prior, absence, datetime.now(timezone.utc).isoformat())
@@ -302,6 +327,27 @@ def api_forget(r: ForgetReq, _: None = Depends(require_auth)):
 
 
 # ─────────────────────────────────────────────────────────── views
+@app.post("/api/hold")
+def api_hold(r: HoldReq, _: None = Depends(require_auth)):
+    """Place a subject under legal hold — erasure is refused until released or lapsed."""
+    return set_hold(r.subject, r.reason, r.until, _ws(r.workspace))
+
+
+@app.post("/api/hold/release")
+def api_hold_release(r: ForgetReq, _: None = Depends(require_auth)):
+    """Lift a legal hold. Erasure becomes permitted again."""
+    return release_hold(r.subject, _ws(r.workspace))
+
+
+@app.get("/api/hold")
+def api_hold_get(subject: str, workspace: str = "default"):
+    """The active hold on a subject, or null. Public: a data subject is entitled to know
+    why their erasure request would be refused."""
+    ws = _ws(workspace)
+    with store.connect() as conn:
+        return {"subject": subject, "workspace": ws, "hold": hold_status(conn, ws, subject)}
+
+
 @app.get("/api/graph")
 def api_graph(workspace: str = "default"):
     ws = _ws(workspace)

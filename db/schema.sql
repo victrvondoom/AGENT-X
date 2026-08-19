@@ -92,6 +92,27 @@ CREATE TABLE IF NOT EXISTS erasure_events (
 -- before the table exists fails on a fresh install.
 ALTER TABLE erasure_events ADD COLUMN IF NOT EXISTS subject_salt BYTES;
 
+-- ── Legal hold ────────────────────────────────────────────────────────────────
+-- GDPR Art. 17(3): the right to erasure does NOT apply where processing is
+-- necessary to comply with a legal obligation, or to establish/exercise/defend a
+-- legal claim. A held subject is refused by forget() rather than silently kept,
+-- so the refusal itself is on the record.
+ALTER TABLE subject_keys ADD COLUMN IF NOT EXISTS hold_reason STRING;
+ALTER TABLE subject_keys ADD COLUMN IF NOT EXISTS hold_until  TIMESTAMPTZ;
+ALTER TABLE subject_keys ADD COLUMN IF NOT EXISTS held_at     TIMESTAMPTZ;
+
+-- ── Source authority ──────────────────────────────────────────────────────────
+-- What makes the cascade LAWFUL rather than merely thorough. Authoritative
+-- material (a statute, a regulator charter) carries no personal data, so erasing a
+-- subject must destroy their evidence and LEAVE the law standing. STRING + CHECK
+-- rather than an enum type: the rest of this schema is plain columns, and enum
+-- migrations are the painful kind.
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS source_kind STRING NOT NULL DEFAULT 'user_evidence';
+ALTER TABLE nodes     ADD COLUMN IF NOT EXISTS source_kind STRING NOT NULL DEFAULT 'user_evidence';
+-- erasure_events records what survived, so the signed certificate can attest to it.
+ALTER TABLE erasure_events ADD COLUMN IF NOT EXISTS authoritative_retained INT DEFAULT 0;
+ALTER TABLE erasure_events ADD COLUMN IF NOT EXISTS hold_released_at TIMESTAMPTZ;
+
 -- Workspaces: named, isolated knowledge bases (multi-tenancy).
 CREATE TABLE IF NOT EXISTS workspaces (
     id         STRING PRIMARY KEY,
