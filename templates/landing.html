@@ -29,10 +29,33 @@
   --bone:#edeae2;          /* warm off-white text */
   --bone-dim:#9a978f;
   --hair:rgba(237,234,226,.10);
+  --scrim:linear-gradient(100deg,rgba(8,8,10,.94) 0%,rgba(8,8,10,.82) 26%,rgba(8,8,10,.30) 52%,rgba(8,8,10,0) 72%);
+  --cta-bg:rgba(237,234,226,.95);   --cta-fg:#0b0b0e;
+  --cta-glow:rgba(255,255,255,.28); --cta-glow-hi:rgba(255,255,255,.42);
+  --nav-bg:rgba(8,8,10,.6);
+}
+/* ── DAY ────────────────────────────────────────────────────────────────────
+   Not an inversion. On a bright ground the same "royal white" reads as warm
+   ivory paper with ink-dark type; the glow inverts to a soft shadow, because a
+   white halo on white is invisible. The 3D scene is retuned in JS to match —
+   additive blending in particular cannot survive a light background. */
+:root[data-theme="day"]{
+  --void:#f5f3ee;
+  --ink:255,255,255;
+  --chaos:#8a6f3e;         /* champagne, darkened to hold against paper */
+  --order:#4d6b8a;         /* ice, darkened likewise */
+  --crystal:#2a2823;
+  --bone:#1b1a17;
+  --bone-dim:#6d6a62;
+  --hair:rgba(27,26,23,.14);
+  --scrim:linear-gradient(100deg,rgba(245,243,238,.94) 0%,rgba(245,243,238,.82) 26%,rgba(245,243,238,.28) 52%,rgba(245,243,238,0) 72%);
+  --cta-bg:#1b1a17;               --cta-fg:#f7f6f3;
+  --cta-glow:rgba(27,26,23,.20);  --cta-glow-hi:rgba(27,26,23,.32);
+  --nav-bg:rgba(245,243,238,.72);
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
-body{margin:0;background:var(--void);color:var(--bone);
+body{margin:0;background:var(--void);color:var(--bone);transition:background .45s ease,color .45s ease;
   font-family:'Inter',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;
   overflow-x:hidden}
 .serif{font-family:'Instrument Serif',Georgia,serif;font-weight:400}
@@ -45,8 +68,8 @@ body{margin:0;background:var(--void);color:var(--bone);
 /* Scrim: the crystal is staged right, so a soft left-to-right wash keeps the
    copy column readable no matter where the camera swings. Text legibility wins
    over scene visibility. */
-#scrim{position:fixed;inset:0;z-index:0;pointer-events:none;
-  background:linear-gradient(100deg,rgba(8,8,10,.94) 0%,rgba(8,8,10,.82) 26%,rgba(8,8,10,.30) 52%,rgba(8,8,10,0) 72%)}
+#scrim{position:fixed;inset:0;z-index:0;pointer-events:none;transition:background .45s ease;
+  background:var(--scrim)}
 
 /* ── glassmorphism ── */
 .glass{background:rgba(var(--ink),.42);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
@@ -54,20 +77,20 @@ body{margin:0;background:var(--void);color:var(--bone);
 
 /* ── the spine: 1px vertical rule anchoring the left edge ── */
 .spine{position:fixed;left:2rem;top:0;bottom:0;width:1px;z-index:1;pointer-events:none;
-  background:linear-gradient(to bottom,transparent,rgba(220,233,255,.22) 8%,rgba(220,233,255,.22) 92%,transparent)}
+  background:linear-gradient(to bottom,transparent,var(--bone-dim) 8%,var(--bone-dim) 92%,transparent);opacity:.35}
 @media (max-width:900px){.spine{display:none}}
 
 /* ── glow language: white light, not coloured light ── */
 .cta{display:inline-flex;align-items:center;gap:.55rem;border-radius:999px;
-  background:rgba(237,234,226,.95);color:#0b0b0e;font-weight:600;font-size:.875rem;
+  background:var(--cta-bg);color:var(--cta-fg);font-weight:600;font-size:.875rem;
   padding:.75rem 1.5rem;border:none;cursor:pointer;text-decoration:none;
-  box-shadow:0 0 28px rgba(255,255,255,.28),inset 0 1px 0 rgba(255,255,255,.9);
+  box-shadow:0 0 28px var(--cta-glow),inset 0 1px 0 rgba(255,255,255,.35);
   transition:box-shadow .25s ease,transform .18s ease}
-.cta:hover{box-shadow:0 0 44px rgba(255,255,255,.42),inset 0 1px 0 rgba(255,255,255,.9);transform:translateY(-1px)}
+.cta:hover{box-shadow:0 0 44px var(--cta-glow-hi),inset 0 1px 0 rgba(255,255,255,.35);transform:translateY(-1px)}
 .cta-ghost{display:inline-flex;align-items:center;gap:.5rem;border-radius:999px;padding:.7rem 1.35rem;
   font-size:.875rem;color:var(--bone);text-decoration:none;border:1px solid var(--hair);
   background:rgba(var(--ink),.4);backdrop-filter:blur(12px);transition:border-color .25s,box-shadow .25s}
-.cta-ghost:hover{border-color:rgba(237,234,226,.28);box-shadow:0 0 22px rgba(255,255,255,.12)}
+.cta-ghost:hover{border-color:var(--bone-dim);box-shadow:0 0 22px var(--cta-glow)}
 
 .pill{display:inline-flex;align-items:center;gap:.5rem;border-radius:999px;padding:.32rem .8rem;
   font-size:.6875rem;letter-spacing:.12em;text-transform:uppercase;
@@ -104,13 +127,13 @@ h2{font-size:clamp(1.9rem,3.9vw,3rem);line-height:1.08}
 
 .term{padding:0;overflow:hidden}
 .term-bar{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;border-bottom:1px solid var(--hair)}
-.term-b{width:9px;height:9px;border-radius:50%;background:rgba(237,234,226,.22)}
+.term-b{width:9px;height:9px;border-radius:50%;background:var(--hair);border:1px solid var(--hair)}
 .term-body{padding:1.1rem;font-size:.8125rem;line-height:1.8;color:var(--bone-dim);
   white-space:pre-wrap;word-break:break-word;min-height:9.5rem}
 .term-body .ok{color:var(--order)}
 
 nav.bar{position:sticky;top:0;z-index:20;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-  background:rgba(8,8,10,.6);border-bottom:1px solid var(--hair)}
+  background:var(--nav-bg);border-bottom:1px solid var(--hair)}
 nav.bar .in{max-width:1120px;margin:0 auto;padding:.85rem clamp(1.25rem,5vw,4rem);
   display:flex;align-items:center;gap:1.5rem}
 nav.bar a{color:var(--bone-dim);text-decoration:none;font-size:.8125rem;transition:color .2s}
@@ -123,6 +146,13 @@ footer{border-top:1px solid var(--hair);padding:4rem 0 3rem;text-align:center}
   filter:drop-shadow(0 -1px 0 rgba(255,255,255,.5)) drop-shadow(0 1px 0 rgba(0,0,0,.55))
          drop-shadow(0 6px 16px rgba(0,0,0,.55)) drop-shadow(0 0 44px rgba(255,255,255,.28));
   user-select:none}
+/* On paper the chrome inverts: the bevel must start dark or the top of every
+   glyph disappears into the background, and the bloom becomes a cast shadow. */
+:root[data-theme="day"] .mark{
+  background:linear-gradient(180deg,#9d9a92 0%,#4a4842 15%,#8e8b83 32%,#2a2823 48%,#b4b1a8 60%,#63605a 76%,rgba(150,147,140,0) 96%);
+  -webkit-background-clip:text;background-clip:text;
+  filter:drop-shadow(0 1px 0 rgba(255,255,255,.85)) drop-shadow(0 -1px 0 rgba(27,26,23,.30))
+         drop-shadow(0 5px 12px rgba(27,26,23,.22)) drop-shadow(0 0 30px rgba(27,26,23,.10))}
 
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
@@ -163,6 +193,10 @@ footer{border-top:1px solid var(--hair);padding:4rem 0 3rem;text-align:center}
       <a href="/learn">Docs</a>
       <a href="/verify">Verify</a>
       <a href="https://github.com/victrvondoom/AGENT-X" target="_blank" rel="noopener">GitHub</a>
+      <button id="themeBtn" title="Switch day / night" aria-label="Switch day / night"
+        style="background:rgba(var(--ink),.4);border:1px solid var(--hair);color:var(--bone-dim);
+               width:32px;height:32px;border-radius:999px;cursor:pointer;display:grid;place-items:center;
+               transition:color .2s,border-color .2s"><span id="themeIcon" style="font-size:13px;line-height:1">☾</span></button>
       <a href="/app" class="cta" style="padding:.5rem 1.1rem;font-size:.8125rem">Launch app</a>
     </div>
   </nav>
@@ -300,6 +334,41 @@ addEventListener('scroll', ()=>{
 }, {passive:true});
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   2b. DAY / NIGHT.
+   CSS variables carry the DOM half. The 3D scene cannot follow automatically —
+   fog, lighting, and above all the particles' AdditiveBlending are tuned for a
+   dark ground (adding light to a white background is a no-op, so the fields
+   would simply vanish). Aperture.onTheme is the hook the WebGL block installs
+   to retune itself; when the scene is absent, only the DOM half runs.
+   Order of precedence: saved choice > OS preference > night.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const THEME_KEY = 'agentx.theme';
+function preferredTheme(){
+  const saved = localStorage.getItem(THEME_KEY);
+  if(saved === 'day' || saved === 'night') return saved;
+  return matchMedia('(prefers-color-scheme: light)').matches ? 'day' : 'night';
+}
+function applyTheme(mode, persist){
+  document.documentElement.setAttribute('data-theme', mode);
+  const icon = document.getElementById('themeIcon');
+  if(icon) icon.textContent = mode === 'day' ? '☀' : '☾';
+  const fbBg = document.querySelector('#fallback rect');
+  if(fbBg) fbBg.setAttribute('fill', mode === 'day' ? '#f5f3ee' : '#08080a');
+  if(persist) localStorage.setItem(THEME_KEY, mode);
+  Aperture.theme = mode;
+  if(Aperture.onTheme) Aperture.onTheme(mode);
+}
+Aperture.theme = preferredTheme();
+applyTheme(Aperture.theme, false);
+document.getElementById('themeBtn').addEventListener('click', ()=>{
+  applyTheme(Aperture.theme === 'day' ? 'night' : 'day', true);
+});
+/* follow the OS only while the visitor has not made an explicit choice */
+matchMedia('(prefers-color-scheme: light)').addEventListener('change', e=>{
+  if(!localStorage.getItem(THEME_KEY)) applyTheme(e.matches ? 'day' : 'night', false);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
    3. DOM CONTENT — steps, metrics, domains, terminal.
    ═══════════════════════════════════════════════════════════════════════════ */
 const STEPS = [
@@ -435,6 +504,7 @@ const crystal = new THREE.Mesh(
 crystal.position.set(1.95,0.05,-0.6);   /* staged right so the copy column stays clear */
 scene.add(crystal);
 
+let backdrop;
 /* Refraction can only bend what is BEHIND the glass. Against empty void the
    crystal reads as a flat grey blob, so this dim structured backdrop sits
    behind it purely to give the transmission pass something to distort. */
@@ -449,7 +519,7 @@ scene.add(crystal);
   for(let i=0;i<=256;i+=16){ x.beginPath(); x.moveTo(i,0); x.lineTo(i,256); x.stroke();
                              x.beginPath(); x.moveTo(0,i); x.lineTo(256,i); x.stroke(); }
   const tex = new THREE.CanvasTexture(c);
-  const backdrop = new THREE.Mesh(
+  backdrop = new THREE.Mesh(
     new THREE.PlaneGeometry(6.4,6.4),
     new THREE.MeshBasicMaterial({map:tex, transparent:true, opacity:.30, depthWrite:false})
   );
@@ -536,16 +606,17 @@ const order = field(560, ORDER_VS, ORDER, (i,pos,seed,lane)=>{
 scene.add(chaos, order);
 
 /* ── destination nodes ── */
-const NODES = ['Claude','GPT-4','Internal-Tool','Audit-Log'];
+const NODES = ["Claude","GPT-4","Internal-Tool","Audit-Log"];
+const nodeMeshes = [], nodeLights = [];
 NODES.forEach((_,i)=>{
   const s = new THREE.Mesh(
     new THREE.SphereGeometry(.085,20,20),
     new THREE.MeshBasicMaterial({color:ORDER, transparent:true, opacity:.92})
   );
   s.position.set(4.6, i*0.42-0.63, 0);
-  scene.add(s);
+  scene.add(s); nodeMeshes.push(s);
   const pl = new THREE.PointLight(ORDER, 2.2, 2.2);
-  pl.position.copy(s.position); scene.add(pl);
+  pl.position.copy(s.position); scene.add(pl); nodeLights.push(pl);
 });
 
 /* ── camera choreography: 5 waypoints, lerped, with an orbital arc mid-page ── */
@@ -572,6 +643,39 @@ function sample(p){
   }
   return {pos:_p, look:_l};
 }
+
+/* ── retune the scene for day / night ──
+   Day is not a colour swap. Additive blending adds light, which does nothing on
+   a bright ground, so the fields switch to normal blending with darkened inks;
+   the glass loses its glow and gains a dark edge so it still reads as a facet. */
+const PALETTE = {
+  night:{ fog:0x08080a, env:0x101014, ambient:0.6,  exposure:1.15,
+          chaos:'#f2e4cc', order:'#dce9ff', edge:0xffffff, edgeOp:0.62,
+          blend:THREE.AdditiveBlending, backdrop:0.30, crystal:0xedeae2, envInt:2.0 },
+  day:  { fog:0xf5f3ee, env:0xe9e6df, ambient:1.35, exposure:1.0,
+          chaos:'#8a6f3e', order:'#4d6b8a', edge:0x2a2823, edgeOp:0.5,
+          blend:THREE.NormalBlending,  backdrop:0.16, crystal:0xffffff, envInt:1.1 },
+};
+const ambient = scene.children.find(o=>o.isAmbientLight);
+Aperture.onTheme = mode => {
+  const P = PALETTE[mode] || PALETTE.night;
+  scene.fog.color.setHex(P.fog);
+  ambient.intensity = P.ambient;
+  renderer.toneMappingExposure = P.exposure;
+  edges.material.color.setHex(P.edge);
+  edges.material.opacity = P.edgeOp;
+  crystal.material.color.setHex(P.crystal);
+  crystal.material.envMapIntensity = P.envInt;
+  backdrop.material.opacity = P.backdrop;
+  for(const [pts,key] of [[chaos,'chaos'],[order,'order']]){
+    pts.material.uniforms.uColor.value.set(P[key]);
+    pts.material.blending = P.blend;
+    pts.material.needsUpdate = true;          // blending change needs a recompile
+  }
+  nodeMeshes.forEach(m=> m.material.color.set(P.order));
+  nodeLights.forEach(l=> { l.color.set(P.order); l.intensity = mode==='day' ? 0.7 : 2.2; });
+};
+Aperture.onTheme(Aperture.theme);             // apply whatever was chosen before the scene existed
 
 const clock = new THREE.Clock();
 let scale = 1;
