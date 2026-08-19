@@ -41,6 +41,11 @@ CREATE TABLE IF NOT EXISTS nodes (
     deleted_at   TIMESTAMPTZ,
     UNIQUE (workspace, name)
 );
+-- Vector indexing is ON by default on CockroachDB Cloud, but OFF on a self-hosted
+-- v25.3 node. Attempted here so a local cluster gets the index too; on a managed
+-- cluster this is refused for lack of permission, which apply_schema tolerates.
+SET CLUSTER SETTING feature.vector_index.enabled = true;
+
 CREATE VECTOR INDEX IF NOT EXISTS nodes_embedding_idx ON nodes (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS nodes_ws_idx ON nodes (workspace);
 

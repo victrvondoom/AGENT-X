@@ -102,16 +102,27 @@ def get_or_create_dek(conn, workspace: str, subject: str) -> bytes:
         row = cur.fetchone()
         if row:
             wrapped, destroyed = row
-            if destroyed is not None or wrapped is None:
+            # destroyed_at is the ONLY proof of erasure. A row can exist with no key yet —
+            # a legal hold placed before any data arrived creates exactly that — and
+            # treating a null key as erasure would permanently brick the subject name.
+            if destroyed is not None:
                 raise KeyDestroyed(subject)
-            return _open(_root_key(), wrapped)
+            if wrapped is not None:
+                return _open(_root_key(), wrapped)
+            # row exists, no key yet: fall through and mint one into it.
         # Mint a key but only persist it if none exists yet (ON CONFLICT DO NOTHING), then re-read
         # the WINNING key — so two concurrent first-ingests converge on one key instead of one of
         # them encrypting a document under a key that gets overwritten (and thus lost forever).
         dek = AESGCM.generate_key(bit_length=256)
         cur.execute(
+            # DO UPDATE, guarded, rather than DO NOTHING: the row may already exist without a
+            # key (a hold placed before any data), and DO NOTHING would leave it keyless
+            # forever. The WHERE clause keeps this race-safe — only one concurrent writer can
+            # fill a null key — and `destroyed_at IS NULL` makes it impossible to resurrect a
+            # crypto-shredded subject.
             "INSERT INTO subject_keys (workspace, subject, wrapped_dek) VALUES (%s, %s, %s) "
-            "ON CONFLICT (workspace, subject) DO NOTHING",
+            "ON CONFLICT (workspace, subject) DO UPDATE SET wrapped_dek = excluded.wrapped_dek "
+            "WHERE subject_keys.wrapped_dek IS NULL AND subject_keys.destroyed_at IS NULL",
             (workspace, subject, _seal(_root_key(), dek)),
         )
         cur.execute(
@@ -161,8 +172,23 @@ def crypto_shred(conn, workspace: str, subject: str) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Schema + helpers
 # ─────────────────────────────────────────────────────────────────────────────
+# Statements whose success depends on the cluster, not on the schema being correct.
+# Vector indexing is on by default on CockroachDB Cloud but OFF on a self-hosted
+# v25.3 node, and SET CLUSTER SETTING is refused on managed clusters. Neither is
+# fatal: without the index, ANN recall still returns correct results, just by scan
+# rather than lookup join. Aborting here used to leave the database half-built —
+# every table after the vector index (edges, subject_keys, erasure_events,
+# workspaces, timeline) was silently never created.
+_OPTIONAL = ("CREATE VECTOR INDEX", "SET CLUSTER SETTING")
+
+
 def apply_schema(conn) -> int:
-    """Apply db/schema.sql (idempotent). Returns the number of statements executed."""
+    """Apply db/schema.sql (idempotent). Returns the number of statements executed.
+
+    Raises on any real schema error. Environment-dependent statements (see _OPTIONAL)
+    are attempted, and a failure is recorded on `apply_schema.warnings` rather than
+    aborting the rest of the schema.
+    """
     import re
 
     path = os.path.join(os.path.dirname(__file__), "schema.sql")
@@ -170,12 +196,28 @@ def apply_schema(conn) -> int:
         sql = f.read()
     sql = re.sub(r"--[^\n]*", "", sql)  # strip line comments (handles ';' inside comments)
     n = 0
-    with conn.cursor() as cur:
-        for stmt in sql.split(";"):
-            if stmt.strip():
+    warnings: list[str] = []
+    for stmt in sql.split(";"):
+        stmt = stmt.strip()
+        if not stmt:
+            continue
+        head = " ".join(stmt.split())[:60]
+        optional = any(k in stmt.upper() for k in _OPTIONAL)
+        try:
+            # A fresh cursor per statement: a failed statement poisons its cursor, and
+            # one optional failure must not take the remaining schema down with it.
+            with conn.cursor() as cur:
                 cur.execute(stmt)
-                n += 1
+            n += 1
+        except Exception as e:
+            if not optional:
+                raise
+            warnings.append(f"{head} -> {str(e).splitlines()[0][:120]}")
+    apply_schema.warnings = warnings
     return n
+
+
+apply_schema.warnings = []
 
 
 def to_vector(values) -> str:
