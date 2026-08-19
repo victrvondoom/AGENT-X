@@ -27,7 +27,12 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-DATABASE_URL = os.environ["DATABASE_URL"]
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL is not set. Copy .env.example to .env, set your CockroachDB connection "
+        "string, then run: python scripts/init_db.py"
+    )
 
 _pool: ConnectionPool | None = None
 
@@ -113,7 +118,10 @@ def get_or_create_dek(conn, workspace: str, subject: str) -> bytes:
             "SELECT wrapped_dek, destroyed_at FROM subject_keys WHERE workspace = %s AND subject = %s",
             (workspace, subject),
         )
-        wrapped, destroyed = cur.fetchone()
+        row = cur.fetchone()
+        if row is None:          # key row vanished between INSERT and re-read (concurrent erase)
+            raise KeyDestroyed(subject)
+        wrapped, destroyed = row
         if destroyed is not None or wrapped is None:
             raise KeyDestroyed(subject)
         return _open(_root_key(), wrapped)
@@ -158,7 +166,7 @@ def apply_schema(conn) -> int:
     import re
 
     path = os.path.join(os.path.dirname(__file__), "schema.sql")
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         sql = f.read()
     sql = re.sub(r"--[^\n]*", "", sql)  # strip line comments (handles ';' inside comments)
     n = 0

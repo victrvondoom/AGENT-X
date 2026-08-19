@@ -115,5 +115,5 @@ conn.close()
 
 # emit machine-readable for the doc
 import json
-with open(os.path.join(os.path.dirname(__file__), "..", "docs", "_smoke_raw.json"), "w") as f:
+with open(os.path.join(os.path.dirname(__file__), "..", "docs", "_smoke_raw.json"), "w", encoding="utf-8") as f:
     json.dump(results, f, indent=2)

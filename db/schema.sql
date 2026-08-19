@@ -24,7 +24,6 @@ CREATE INDEX IF NOT EXISTS documents_ws_subject_idx ON documents (workspace, sub
 -- fresh installs and existing clusters converge here.
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS ttl_expire_at TIMESTAMPTZ;
 ALTER TABLE documents SET (ttl_expiration_expression = 'ttl_expire_at', ttl_job_cron = '@hourly');
-ALTER TABLE erasure_events ADD COLUMN IF NOT EXISTS subject_salt BYTES;
 
 -- Nodes: knowledge-graph entities extracted from documents (LLM-extracted, coreference-merged).
 -- UNIQUE(workspace, name) gives deterministic dedup via INSERT .. ON CONFLICT, per workspace.
@@ -87,6 +86,11 @@ CREATE TABLE IF NOT EXISTS erasure_events (
     cert_json         JSONB,
     created_at        TIMESTAMPTZ DEFAULT now()
 );
+
+-- Migration for clusters created before subject_salt existed. Placed AFTER the CREATE
+-- TABLE above: ADD COLUMN IF NOT EXISTS guards the COLUMN, not the TABLE, so running it
+-- before the table exists fails on a fresh install.
+ALTER TABLE erasure_events ADD COLUMN IF NOT EXISTS subject_salt BYTES;
 
 -- Workspaces: named, isolated knowledge bases (multi-tenancy).
 CREATE TABLE IF NOT EXISTS workspaces (

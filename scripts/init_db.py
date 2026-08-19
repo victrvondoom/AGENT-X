@@ -7,6 +7,7 @@ Usage:  python scripts/init_db.py
 import os
 import sys
 import base64
+import re
 import secrets
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -19,14 +20,34 @@ load_dotenv(ENV)
 
 
 def _fill(name: str, value: str) -> bool:
-    lines = open(ENV).read().splitlines()
+    """Persist `value` for `name` in .env, replacing an EMPTY assignment.
+
+    Matches `NAME=` with an optional inline comment — the exact form shipped in .env.example
+    ("AGENT_X_ROOT_KEY=      # AES-256 root key ..."). The previous exact-string comparison
+    never matched those commented lines, so a freshly generated key was silently dropped: the
+    next run minted a different root key and every document encrypted under the old one became
+    permanently undecryptable. A line that already holds a value is left untouched.
+    """
+    try:
+        with open(ENV, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except FileNotFoundError:
+        lines = []
+
+    pat = re.compile(rf"^\s*{re.escape(name)}\s*=\s*(#.*)?$")
     changed = False
     for i, ln in enumerate(lines):
-        if ln.strip() == f"{name}=":
-            lines[i] = f"{name}={value}"
+        m = pat.match(ln)
+        if m:
+            comment = m.group(1)
+            lines[i] = f"{name}={value}" + (f"      {comment}" if comment else "")
             changed = True
-    if changed:
-        open(ENV, "w").write("\n".join(lines) + "\n")
+    if not changed:                      # no slot for it (or no .env at all) — append one
+        lines.append(f"{name}={value}")
+        changed = True
+
+    with open(ENV, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
     return changed
 
 

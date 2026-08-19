@@ -136,11 +136,13 @@ def _extract_json(raw: str) -> dict:
     for i, ch in enumerate(raw):
         if ch == "{":
             if start is None:
-                start = i
+                start, depth = i, 0   # begin a fresh span, ignoring any earlier stray brace
             depth += 1
         elif ch == "}":
+            if start is None:
+                continue              # a closer with no opener is not part of any span
             depth -= 1
-            if depth == 0 and start is not None:
+            if depth == 0:
                 try:
                     return json.loads(raw[start : i + 1])
                 except Exception:

@@ -84,7 +84,8 @@ def _validate_endpoint(url: str) -> None:
 def _serve(name: str, fallback: str | None = None) -> str:
     path = os.path.join(TEMPLATES, name)
     if os.path.exists(path):
-        return open(path, encoding="utf-8").read()
+        with open(path, encoding="utf-8") as f:
+            return f.read()
     if fallback:
         return _serve(fallback)
     return "<h1>Agent X</h1><p>UI not built yet.</p>"
@@ -109,10 +110,11 @@ LEARN_DIR = os.path.join(ROOT, "learning")
 
 def _learn_title(md_path: str) -> str:
     try:
-        for line in open(md_path, encoding="utf-8"):
-            s = line.strip()
-            if s.startswith("# "):
-                return s[2:].strip()
+        with open(md_path, encoding="utf-8") as f:
+            for line in f:
+                s = line.strip()
+                if s.startswith("# "):
+                    return s[2:].strip()
     except OSError:
         pass
     base = os.path.splitext(os.path.basename(md_path))[0]
@@ -161,7 +163,8 @@ def learn_raw(path: str):
         raise HTTPException(status_code=404, detail="not found")
     if not os.path.isfile(target):
         raise HTTPException(status_code=404, detail="not found")
-    return HTMLResponse(open(target, encoding="utf-8").read(), media_type="text/markdown")
+    with open(target, encoding="utf-8") as f:
+        return HTMLResponse(f.read(), media_type="text/markdown")
 
 
 @app.get("/api/health")
@@ -325,7 +328,7 @@ def evidence():
     report it as unavailable (never show an unproven number)."""
     path = os.path.join(ROOT, "research", "evidence.json")
     try:
-        with open(path, "r") as fh:
+        with open(path, "r", encoding="utf-8") as fh:
             import json
             data = json.load(fh)
             if isinstance(data, dict):
@@ -376,12 +379,12 @@ class DemoteReq(BaseModel):
 
 
 @app.post("/api/demote")
-def api_demote(r: DemoteReq):
+def api_demote(r: DemoteReq, _: None = Depends(require_auth)):
     return {"demoted_nodes": curation.demote(r.subject, r.weight or curation.DEMOTE_DEEP, _ws(r.workspace))}
 
 
 @app.post("/api/restore")
-def api_restore(r: DemoteReq):
+def api_restore(r: DemoteReq, _: None = Depends(require_auth)):
     return {"restored_nodes": curation.restore(r.subject, _ws(r.workspace))}
 
 
@@ -398,7 +401,7 @@ class CycleReq(BaseModel):
 
 
 @app.post("/api/curation/cycle")
-def api_curation_cycle(r: CycleReq):
+def api_curation_cycle(r: CycleReq, _: None = Depends(require_auth)):
     """The decay loop — preview (apply=false) or apply one bounded pass by review-age."""
     return curation.run_cycle(r.apply, _ws(r.workspace))
 
@@ -579,8 +582,8 @@ def _render_certificate(row, event_id: str) -> str:
     date_human = date_short = created_at or ""
     try:
         dt = datetime.fromisoformat((created_at or "").replace(" ", "T"))
-        date_human = dt.strftime("%B %-d, %Y at %H:%M UTC")
-        date_short = dt.strftime("%b %-d, %Y")
+        date_human = f"{dt.strftime('%B')} {dt.day}, {dt.strftime('%Y at %H:%M')} UTC"
+        date_short = f"{dt.strftime('%b')} {dt.day}, {dt.year}"
     except Exception:
         pass
 
@@ -665,6 +668,12 @@ def _render_certificate(row, event_id: str) -> str:
 
 @app.get("/certificate/{event_id}", response_class=HTMLResponse)
 def certificate_page(event_id: str):
+    # A non-UUID path segment would reach the DB as a bad cast and surface as a 500; the
+    # honest answer for an unparseable id is the same 404 an unknown id gets.
+    try:
+        uuid.UUID(event_id)
+    except ValueError:
+        return HTMLResponse("<h1>Certificate not found</h1>", status_code=404)
     with store.connect() as conn, conn.cursor() as c:
         c.execute(
             "SELECT workspace, subject, t_before, docs_removed, nodes_removed, edges_removed, "
