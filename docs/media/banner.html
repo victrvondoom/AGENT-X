@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root{
+    --bg:#080b14; --bg2:#0c1120; --ink:#e8eaf2; --muted:#8b93a7;
+    --violet:#8b7cf6; --violet2:#a78bfa; --violet3:#6d5ef0; --edge:#232a3d;
+    --serif: "Palatino Linotype","Palatino","Iowan Old Style","Georgia",serif;
+    --mono: "SF Mono","JetBrains Mono",ui-monospace,Menlo,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1200px;height:420px;overflow:hidden}
+  .stage{position:relative;width:1200px;height:420px;
+    background:
+      radial-gradient(900px 420px at 50% -10%, rgba(139,124,246,.16), transparent 60%),
+      radial-gradient(700px 500px at 85% 120%, rgba(109,94,240,.12), transparent 60%),
+      linear-gradient(180deg,var(--bg),var(--bg2));
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px}
+  /* faint dot grid, like the app */
+  .stage::before{content:"";position:absolute;inset:0;
+    background-image:radial-gradient(rgba(255,255,255,.045) 1px, transparent 1px);
+    background-size:26px 26px;mask-image:radial-gradient(720px 340px at 50% 42%, #000 55%, transparent 100%)}
+  /* floating memory particles that drift + dissolve (the "forgetting" motif) */
+  .p{position:absolute;border-radius:50%;background:var(--violet2);opacity:0;filter:blur(.2px);
+     box-shadow:0 0 8px rgba(167,139,250,.7);animation:drift 6s linear infinite}
+  @keyframes drift{
+    0%{opacity:0;transform:translateY(10px) scale(1)}
+    18%{opacity:.9}
+    70%{opacity:.5}
+    100%{opacity:0;transform:translateY(-46px) scale(.3)}
+  }
+  .brand{position:relative;display:flex;align-items:center;gap:20px;z-index:2}
+  .ring{width:62px;height:62px;color:var(--violet)}
+  .ring .gap{transform-origin:32px 32px;animation:spin 6s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .word{font-family:var(--serif);font-size:96px;line-height:1;letter-spacing:.5px;font-weight:500;
+    background:linear-gradient(92deg,#c9c2ff 0%,#a78bfa 30%,#eae7ff 50%,#a78bfa 70%,#c9c2ff 100%);
+    background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+    animation:sheen 6s ease-in-out infinite}
+  @keyframes sheen{0%,100%{background-position:0% 0}50%{background-position:100% 0}}
+  .tag{position:relative;z-index:2;font-family:var(--serif);font-size:26px;color:var(--ink);letter-spacing:.2px}
+  .tag b{color:var(--violet2);font-weight:600;font-style:italic}
+  .sub{position:relative;z-index:2;font-family:var(--mono);font-size:14px;color:var(--muted);letter-spacing:.6px}
+  .sub .dot{color:var(--violet)}
+  /* a row of "nodes" that erase one-by-one, then restore — the product in one gesture */
+  .nodes{position:relative;z-index:2;display:flex;gap:14px;margin-top:2px}
+  .nodes i{width:9px;height:9px;border-radius:50%;background:var(--violet2);
+    box-shadow:0 0 10px rgba(167,139,250,.8);animation:erase 6s ease-in-out infinite}
+  .nodes i:nth-child(1){animation-delay:.0s}
+  .nodes i:nth-child(2){animation-delay:.35s}
+  .nodes i:nth-child(3){animation-delay:.7s}
+  .nodes i:nth-child(4){animation-delay:1.05s}
+  .nodes i:nth-child(5){animation-delay:1.4s}
+  .nodes i:nth-child(6){animation-delay:1.75s}
+  .nodes i:nth-child(7){animation-delay:2.1s}
+  @keyframes erase{
+    0%,30%{opacity:1;transform:scale(1)}
+    46%{opacity:0;transform:scale(.2)}
+    64%{opacity:0;transform:scale(.2)}
+    80%,100%{opacity:1;transform:scale(1)}
+  }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="brand">
+      <svg class="ring" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round">
+        <path class="gap" d="M32 6 A26 26 0 1 0 51 15" opacity=".95"/>
+        <circle cx="32" cy="32" r="4.5" fill="currentColor" stroke="none"/>
+      </svg>
+      <div class="word">Agent X</div>
+    </div>
+    <div class="tag">Verifiable forgetting for AI-agent memory — <b>delete it everywhere, prove it's gone</b></div>
+    <div class="nodes"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="sub">CockroachDB-native <span class="dot">·</span> one ACID transaction <span class="dot">·</span> AS OF SYSTEM TIME <span class="dot">·</span> crypto-shred <span class="dot">·</span> signed WORM certificate</div>
+  </div>
+  <script>
+    // scatter drifting particles
+    const s=document.getElementById('stage');
+    for(let i=0;i<34;i++){const d=document.createElement('div');d.className='p';
+      const sz=2+Math.random()*3;d.style.width=d.style.height=sz+'px';
+      d.style.left=(8+Math.random()*84)+'%';d.style.top=(30+Math.random()*45)+'%';
+      d.style.animationDelay=(-Math.random()*6)+'s';s.appendChild(d);}
+  </script>
+</body>
+</html>

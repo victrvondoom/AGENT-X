@@ -1,0 +1,49 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  html,body{margin:0;width:640px;height:640px;background:transparent}
+  .stage{width:640px;height:640px;display:grid;place-items:center}
+  svg{filter:drop-shadow(0 24px 40px rgba(80,50,200,.45))}
+</style></head>
+<body>
+<div class="stage">
+<svg width="440" height="440" viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- glossy violet tube for the ring -->
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c9b8ff"/>
+      <stop offset="0.35" stop-color="#8b5cf6"/>
+      <stop offset="0.7" stop-color="#6d28d9"/>
+      <stop offset="1" stop-color="#4c1d95"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="dot" cx="0.35" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#e9e2ff"/>
+      <stop offset="0.4" stop-color="#a78bfa"/>
+      <stop offset="1" stop-color="#6d28d9"/>
+    </radialGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="1.1"/>
+    </filter>
+  </defs>
+
+  <!-- the ring: an open circle (the "erasure gap"), thick glossy tube -->
+  <g transform="rotate(-18 100 110)">
+    <!-- base tube -->
+    <path d="M100 34 A76 76 0 1 0 156 60" fill="none" stroke="url(#ring)" stroke-width="26" stroke-linecap="round"/>
+    <!-- dark inner edge for depth -->
+    <path d="M100 34 A76 76 0 1 0 156 60" fill="none" stroke="#3b0f75" stroke-width="10" stroke-linecap="round" opacity="0.35" transform="translate(2.5 3)"/>
+    <!-- top gloss highlight -->
+    <path d="M100 34 A76 76 0 0 0 40 66" fill="none" stroke="url(#gloss)" stroke-width="7" stroke-linecap="round" filter="url(#soft)"/>
+  </g>
+
+  <!-- the dissolving-memory dot trail leaving the gap -->
+  <circle cx="112" cy="110" r="12" fill="url(#dot)"/>
+  <circle cx="146" cy="110" r="8.5" fill="url(#dot)" opacity="0.72"/>
+  <circle cx="174" cy="110" r="5.5" fill="url(#dot)" opacity="0.42"/>
+  <circle cx="196" cy="110" r="3.2" fill="url(#dot)" opacity="0.2"/>
+</svg>
+</div>
+</body></html>
