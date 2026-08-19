@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent X</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 24' fill='none' stroke='%238b5cf6' stroke-width='2.4' stroke-linecap='round'><path d='M16.97 7.97A7.2 7.2 0 1 0 16.97 16.03'/><circle cx='19.6' cy='12' r='1.25' fill='%238b5cf6' stroke='none'/><circle cx='22.6' cy='12' r='0.95' fill='%238b5cf6' stroke='none' opacity='.6'/><circle cx='25.2' cy='12' r='0.62' fill='%238b5cf6' stroke='none' opacity='.32'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 24' fill='none' stroke='%238b9db2' stroke-width='2.4' stroke-linecap='round'><path d='M16.97 7.97A7.2 7.2 0 1 0 16.97 16.03'/><circle cx='19.6' cy='12' r='1.25' fill='%238b9db2' stroke='none'/><circle cx='22.6' cy='12' r='0.95' fill='%238b9db2' stroke='none' opacity='.6'/><circle cx='25.2' cy='12' r='0.62' fill='%238b9db2' stroke='none' opacity='.32'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
@@ -19,16 +19,32 @@
     --color-slate-100:#eef1f6; --color-slate-200:#e0e5ee; --color-slate-300:#cbd3e1; --color-slate-400:#93a0b5;
     --color-slate-500:#64718a; --color-slate-600:#475066; --color-slate-700:#353d50; --color-slate-800:#222838;
     --color-slate-900:#141a27;
+    /* Polished-silver accent. Remaps the violet/purple ramps to a cool ice-platinum so every
+       existing utility class becomes silver without touching 281 call sites. Luminance is kept
+       in step with the old ramp: 600/700 stay dark enough to read as text on white (5.1:1),
+       300/400/500 stay bright for glows, borders and dark-mode accents. The metallic quality
+       comes from the .metal / .sheen gradients below, not from the flat colour — a flat silver
+       would collapse into the neutral zinc ramp and flatten the hierarchy. */
+    --color-violet-50:#f5f8fb;  --color-violet-100:#eaf0f6; --color-violet-200:#dae3ec;
+    --color-violet-300:#c2cfdd; --color-violet-400:#a3b3c6; --color-violet-500:#6b8096;
+    --color-violet-600:#5c7086; --color-violet-700:#47586b; --color-violet-800:#374557;
+    --color-violet-950:#161c24;
+    --color-purple-100:#eaf0f6; --color-purple-300:#c2cfdd;
+    --color-purple-700:#47586b; --color-purple-950:#161c24;
   }
   body{font-family:'Geist',system-ui,sans-serif}
   @keyframes blink{0%,80%,100%{opacity:.2}40%{opacity:1}}
   .dot{animation:blink 1.4s infinite both}.dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
   @keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   .fadein{animation:fadein .28s ease both}
-  @keyframes dissolve{0%{opacity:1;filter:blur(0)}18%{box-shadow:0 0 24px 2px rgba(139,92,246,.30)}100%{opacity:0;transform:translateY(16px) scale(.95);filter:blur(7px)}}
+  @keyframes dissolve{0%{opacity:1;filter:blur(0)}18%{box-shadow:0 0 24px 2px rgba(174,196,220,.30)}100%{opacity:0;transform:translateY(16px) scale(.95);filter:blur(7px)}}
   .dissolving{animation:dissolve .75s ease forwards;pointer-events:none}
   ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:rgba(120,120,135,.3);border-radius:8px}
   .serif{font-family:'Instrument Serif','Spectral',Georgia,serif;font-weight:400}
+  /* Diamond glint on the logo mark: a cool specular halo. Kept on the icon and the hero
+     wordmark only — a chrome gradient on 18px header text turns to mud. */
+  .agentx-logo{filter:drop-shadow(0 0 7px rgba(174,196,220,.6)) drop-shadow(0 0 2px rgba(255,255,255,.8))}
+  .dark .agentx-logo{filter:drop-shadow(0 0 9px rgba(196,214,232,.55)) drop-shadow(0 0 2px rgba(255,255,255,.5))}
   .bg-grid{background-image:radial-gradient(rgba(100,116,139,.12) 1px,transparent 1px);background-size:26px 26px}
   .dark .bg-grid{background-image:radial-gradient(rgba(148,163,184,.06) 1px,transparent 1px)}
   .wv{position:absolute;left:0;top:0;height:100%;width:200%}
@@ -38,28 +54,28 @@
   @keyframes cardIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
   @keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(6px)}to{opacity:1;transform:none}}
   @keyframes shimmer{to{background-position:-200% 0}}
-  .glow{background-image:radial-gradient(220px circle at var(--mx,-200px) var(--my,-200px),rgba(139,92,246,.13),transparent 60%)}
+  .glow{background-image:radial-gradient(220px circle at var(--mx,-200px) var(--my,-200px),rgba(174,196,220,.13),transparent 60%)}
   .lift{transition:transform .18s ease,box-shadow .25s ease,border-color .25s ease}
-  .lift:hover{transform:translateY(-2px);box-shadow:0 18px 44px -24px rgba(2,8,20,.55);border-color:rgba(139,92,246,.35)}
+  .lift:hover{transform:translateY(-2px);box-shadow:0 18px 44px -24px rgba(2,8,20,.55);border-color:rgba(174,196,220,.35)}
   .card-enter>*{animation:cardIn .45s cubic-bezier(.22,1,.36,1) both;animation-delay:calc(var(--i,0)*45ms)}
   .mscale{animation:modalIn .2s cubic-bezier(.22,1,.36,1)}
   .view-enter{animation:cardIn .3s cubic-bezier(.22,1,.36,1) both}
   .skel{background:linear-gradient(90deg,rgba(148,163,184,.10) 25%,rgba(148,163,184,.20) 37%,rgba(148,163,184,.10) 63%);background-size:200% 100%;animation:shimmer 1.3s linear infinite;border-radius:.6rem}
   .dark .skel{background:linear-gradient(90deg,rgba(148,163,184,.06) 25%,rgba(148,163,184,.13) 37%,rgba(148,163,184,.06) 63%);background-size:200% 100%}
   @keyframes thsh{to{background-position:-200% 0}}
-  .thsh{background:linear-gradient(90deg,rgba(113,113,122,.65) 20%,rgba(139,92,246,.95) 50%,rgba(113,113,122,.65) 80%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;animation:thsh 1.5s linear infinite}
-  .dark .thsh{background:linear-gradient(90deg,rgba(161,161,170,.5) 20%,rgba(139,92,246,.95) 50%,rgba(161,161,170,.5) 80%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text}
+  .thsh{background:linear-gradient(90deg,rgba(113,113,122,.65) 20%,rgba(174,196,220,.95) 50%,rgba(113,113,122,.65) 80%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;animation:thsh 1.5s linear infinite}
+  .dark .thsh{background:linear-gradient(90deg,rgba(161,161,170,.5) 20%,rgba(174,196,220,.95) 50%,rgba(161,161,170,.5) 80%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text}
   button:not(:disabled):active{transform:scale(.97)}
-  input:focus-visible,textarea:focus-visible{box-shadow:0 0 0 3px rgba(139,92,246,.15)}
-  .drop-hot{border-color:#8b5cf6!important;background-color:rgba(139,92,246,.07)!important}
+  input:focus-visible,textarea:focus-visible{box-shadow:0 0 0 3px rgba(174,196,220,.15)}
+  .drop-hot{border-color:#8b9db2!important;background-color:rgba(174,196,220,.07)!important}
   @media (prefers-reduced-motion:reduce){.wv-f,.wv-b{animation:none}.card-enter>*,.mscale,.view-enter{animation:none}.lift:hover{transform:none}.glow::before{display:none}.skel{animation:none}.thsh{animation:none;-webkit-text-fill-color:#71717a;color:#71717a}}
 </style>
 </head>
 <body class="min-h-screen text-slate-900 antialiased dark:text-slate-100">
 <div aria-hidden="true" class="bg-grid fixed inset-0 -z-10 bg-[#f6f8fc] dark:bg-[#0a0e1a]"></div>
 <div aria-hidden="true" class="pointer-events-none fixed inset-x-0 bottom-0 -z-10 h-44 overflow-hidden" style="-webkit-mask-image:linear-gradient(0deg,#000,#000 28%,transparent);mask-image:linear-gradient(0deg,#000,#000 28%,transparent)">
-  <svg class="wv wv-b" viewBox="0 0 1440 90" preserveAspectRatio="none" fill="none"><path d="M0 55 Q120 30 240 55 T480 55 T720 55 T960 55 T1200 55 T1440 55" stroke="#a855f7" stroke-width="1.5" stroke-opacity=".13" stroke-linecap="round"/></svg>
-  <svg class="wv wv-f" viewBox="0 0 1440 90" preserveAspectRatio="none" fill="none"><path d="M0 44 Q120 20 240 44 T480 44 T720 44 T960 44 T1200 44 T1440 44" stroke="#8b5cf6" stroke-width="1.5" stroke-opacity=".15" stroke-linecap="round"/></svg>
+  <svg class="wv wv-b" viewBox="0 0 1440 90" preserveAspectRatio="none" fill="none"><path d="M0 55 Q120 30 240 55 T480 55 T720 55 T960 55 T1200 55 T1440 55" stroke="#a3b3c6" stroke-width="1.5" stroke-opacity=".13" stroke-linecap="round"/></svg>
+  <svg class="wv wv-f" viewBox="0 0 1440 90" preserveAspectRatio="none" fill="none"><path d="M0 44 Q120 20 240 44 T480 44 T720 44 T960 44 T1200 44 T1440 44" stroke="#8b9db2" stroke-width="1.5" stroke-opacity=".15" stroke-linecap="round"/></svg>
 </div>
 <div class="flex h-screen overflow-hidden">
 
@@ -389,7 +405,7 @@
  let activeWs=localStorage.getItem('agentx.ws')||'default';
  let wsList=[];
  let curView='triage';
- const navActive='bg-zinc-100 font-medium text-zinc-900 shadow-[inset_2px_0_0_#7c3aed] dark:bg-[#1a2233] dark:text-white dark:shadow-[inset_2px_0_0_#8b5cf6]';
+ const navActive='bg-zinc-100 font-medium text-zinc-900 shadow-[inset_2px_0_0_#5c7086] dark:bg-[#1a2233] dark:text-white dark:shadow-[inset_2px_0_0_#8b9db2]';
  const navIdle='text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-white';
  function show(v){
    curView=v;
@@ -845,15 +861,15 @@
  const gReduced=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches);
  function loadVis(cb){if(window.vis)return cb();const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js';s.onload=cb;s.onerror=()=>{$('gmeta').textContent='could not load the graph library';};document.head.appendChild(s);}
  function gpal(){const dark=document.documentElement.classList.contains('dark');return dark?{
-     ent:{background:'#8b5cf6',border:'#7c3aed'},typ:{background:'#818cf8',border:'#a855f7'},dem:{background:'#f59e0b',border:'#d97706'},ghost:{background:'rgba(148,163,184,.22)',border:'rgba(148,163,184,.30)'},
+     ent:{background:'#8b9db2',border:'#5c7086'},typ:{background:'#818cf8',border:'#a3b3c6'},dem:{background:'#f59e0b',border:'#d97706'},ghost:{background:'rgba(148,163,184,.22)',border:'rgba(148,163,184,.30)'},
      dimNode:{background:'rgba(100,116,139,.16)',border:'rgba(100,116,139,.22)'},
      font:'#e2e8f0',fontDim:'rgba(148,163,184,.30)',halo:'#0a0e1a',
-     edge:'rgba(100,116,139,.42)',edgeDim:'rgba(100,116,139,.09)',edgeHi:'#8b5cf6',efont:'#cbd5e1',glow:'rgba(139,92,246,.85)'
+     edge:'rgba(100,116,139,.42)',edgeDim:'rgba(100,116,139,.09)',edgeHi:'#8b9db2',efont:'#cbd5e1',glow:'rgba(174,196,220,.85)'
    }:{
-     ent:{background:'#7c3aed',border:'#0e7490'},typ:{background:'#a855f7',border:'#9333ea'},dem:{background:'#d97706',border:'#b45309'},ghost:{background:'rgba(148,163,184,.30)',border:'rgba(148,163,184,.45)'},
+     ent:{background:'#5c7086',border:'#0e7490'},typ:{background:'#a3b3c6',border:'#6e8299'},dem:{background:'#d97706',border:'#b45309'},ghost:{background:'rgba(148,163,184,.30)',border:'rgba(148,163,184,.45)'},
      dimNode:{background:'rgba(148,163,184,.22)',border:'rgba(148,163,184,.28)'},
      font:'#0f172a',fontDim:'rgba(100,116,139,.40)',halo:'#f4f7fc',
-     edge:'rgba(148,163,184,.70)',edgeDim:'rgba(148,163,184,.22)',edgeHi:'#7c3aed',efont:'#334155',glow:'rgba(8,145,178,.55)'
+     edge:'rgba(148,163,184,.70)',edgeDim:'rgba(148,163,184,.22)',edgeHi:'#5c7086',efont:'#334155',glow:'rgba(8,145,178,.55)'
    };}
  function gbase(n,p){return n.deleted?{background:p.ghost.background,border:p.ghost.border}:(n._demoted?{background:p.dem.background,border:p.dem.border}:{background:p.ent.background,border:p.ent.border});}
  // animate node opacities toward targets (~170ms easeOutCubic) — the smooth Obsidian focus-pull; snaps on reduced-motion.
