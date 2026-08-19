@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent X Docs — verifiable forgetting, end to end</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 24' fill='none' stroke='%238b9db2' stroke-width='2.4' stroke-linecap='round'><path d='M16.97 7.97A7.2 7.2 0 1 0 16.97 16.03'/><circle cx='19.6' cy='12' r='1.25' fill='%238b9db2' stroke='none'/><circle cx='22.6' cy='12' r='0.95' fill='%238b9db2' stroke='none' opacity='.6'/><circle cx='25.2' cy='12' r='0.62' fill='%238b9db2' stroke='none' opacity='.32'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 24' fill='none' stroke='%23a8a8b0' stroke-width='2.4' stroke-linecap='round'><path d='M16.97 7.97A7.2 7.2 0 1 0 16.97 16.03'/><circle cx='19.6' cy='12' r='1.25' fill='%23a8a8b0' stroke='none'/><circle cx='22.6' cy='12' r='0.95' fill='%23a8a8b0' stroke='none' opacity='.6'/><circle cx='25.2' cy='12' r='0.62' fill='%23a8a8b0' stroke='none' opacity='.32'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
@@ -12,21 +12,21 @@
 <style type="text/tailwindcss">
   @custom-variant dark (&:where(.dark, .dark *));
   @theme {
-    --color-zinc-50:#f5f7fa; --color-zinc-100:#eef1f6; --color-zinc-200:#e0e5ee; --color-zinc-300:#cbd3e1;
-    --color-zinc-400:#93a0b5; --color-zinc-500:#64718a; --color-zinc-600:#475066; --color-zinc-700:#353d50;
-    --color-zinc-800:#222838; --color-zinc-900:#161b28; --color-zinc-950:#0d1119;
+    --color-zinc-50:#fafafb; --color-zinc-100:#f4f4f5; --color-zinc-200:#e7e7ea; --color-zinc-300:#d3d3d8;
+    --color-zinc-400:#9e9ea6; --color-zinc-500:#75757d; --color-zinc-600:#57575e; --color-zinc-700:#414147;
+    --color-zinc-800:#2b2b31; --color-zinc-900:#1c1c21; --color-zinc-950:#131317;
     /* Polished-silver accent. Remaps the violet/purple ramps to a cool ice-platinum so every
        existing utility class becomes silver without touching 281 call sites. Luminance is kept
        in step with the old ramp: 600/700 stay dark enough to read as text on white (5.1:1),
        300/400/500 stay bright for glows, borders and dark-mode accents. The metallic quality
        comes from the .metal / .sheen gradients below, not from the flat colour — a flat silver
        would collapse into the neutral zinc ramp and flatten the hierarchy. */
-    --color-violet-50:#f5f8fb;  --color-violet-100:#eaf0f6; --color-violet-200:#dae3ec;
-    --color-violet-300:#c2cfdd; --color-violet-400:#a3b3c6; --color-violet-500:#6b8096;
-    --color-violet-600:#5c7086; --color-violet-700:#47586b; --color-violet-800:#374557;
-    --color-violet-950:#161c24;
-    --color-purple-100:#eaf0f6; --color-purple-300:#c2cfdd;
-    --color-purple-700:#47586b; --color-purple-950:#161c24;
+    --color-violet-50:#fcfcfd;  --color-violet-100:#f5f5f7; --color-violet-200:#eaeaed;
+    --color-violet-300:#d8d8dd; --color-violet-400:#b9b9c0; --color-violet-500:#8e8e96;
+    --color-violet-600:#74747c; --color-violet-700:#5b5b62; --color-violet-800:#444449;
+    --color-violet-950:#1c1c20;
+    --color-purple-100:#f5f5f7; --color-purple-300:#d8d8dd;
+    --color-purple-700:#5b5b62; --color-purple-950:#1c1c20;
   }
   body{font-family:'Geist',system-ui,sans-serif}
   .serif{font-family:'Instrument Serif','Spectral',Georgia,serif;font-weight:400}
@@ -34,27 +34,27 @@
   .prose{line-height:1.8;font-size:1.075rem}
   .prose>*:first-child{margin-top:0}
   .prose h1{font-family:'Instrument Serif',Georgia,serif;font-weight:400;font-size:2.9rem;letter-spacing:-.01em;line-height:1.12;margin:0 0 1.2rem}
-  .prose h2{font-family:'Instrument Serif',Georgia,serif;font-weight:400;font-size:2.05rem;margin:2.8rem 0 .8rem;padding-top:1.4rem;border-top:1px solid rgba(148,163,184,.15)}
+  .prose h2{font-family:'Instrument Serif',Georgia,serif;font-weight:400;font-size:2.05rem;margin:2.8rem 0 .8rem;padding-top:1.4rem;border-top:1px solid rgba(158,158,166,.15)}
   .prose h3{font-weight:600;font-size:1.28rem;margin:2rem 0 .6rem}
   .prose p{margin:.85rem 0}
-  .prose a{color:#5c7086;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
-  .dark .prose a{color:#8b9db2}
+  .prose a{color:#74747c;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
+  .dark .prose a{color:#a8a8b0}
   .prose ul,.prose ol{margin:.7rem 0 .7rem 1.4rem}
   .prose ul{list-style:disc}.prose ol{list-style:decimal}
   .prose li{margin:.3rem 0}
-  .prose blockquote{border-left:3px solid rgba(174,196,220,.5);padding:.1rem 0 .1rem 1rem;color:#64718a;margin:1rem 0}
-  .dark .prose blockquote{color:#93a0b5}
+  .prose blockquote{border-left:3px solid rgba(228,230,236,.5);padding:.1rem 0 .1rem 1rem;color:#75757d;margin:1rem 0}
+  .dark .prose blockquote{color:#9e9ea6}
   .prose code{font-family:'Geist Mono',monospace;font-size:.85em;background:rgba(100,116,139,.12);border-radius:.3rem;padding:.12em .38em}
-  .dark .prose code{background:rgba(148,163,184,.13)}
-  .prose pre{background:#0d1119;color:#e0e5ee;border:1px solid #222838;border-radius:.8rem;padding:1rem 1.15rem;overflow-x:auto;margin:1rem 0}
+  .dark .prose code{background:rgba(158,158,166,.13)}
+  .prose pre{background:#131317;color:#e7e7ea;border:1px solid #2b2b31;border-radius:.8rem;padding:1rem 1.15rem;overflow-x:auto;margin:1rem 0}
   .prose pre code{background:none;padding:0;font-size:.84rem}
   .prose table{border-collapse:collapse;margin:1.1rem 0;width:100%;font-size:.9rem;display:block;overflow-x:auto}
-  .prose th,.prose td{border:1px solid #cbd3e1;padding:.5rem .75rem;text-align:left;vertical-align:top}
-  .dark .prose th,.dark .prose td{border-color:#353d50}
+  .prose th,.prose td{border:1px solid #d3d3d8;padding:.5rem .75rem;text-align:left;vertical-align:top}
+  .dark .prose th,.dark .prose td{border-color:#414147}
   .prose th{background:rgba(100,116,139,.08);font-weight:600}
   .prose img{max-width:100%;border-radius:.7rem}
-  .prose hr{border:none;border-top:1px solid #cbd3e1;margin:1.8rem 0}
-  .dark .prose hr{border-top-color:#353d50}
+  .prose hr{border:none;border-top:1px solid #d3d3d8;margin:1.8rem 0}
+  .dark .prose hr{border-top-color:#414147}
   .prose .mermaid{background:transparent;display:flex;justify-content:center;margin:1.2rem 0;overflow-x:auto}
 </style>
 </head>

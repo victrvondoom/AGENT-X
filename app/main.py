@@ -435,13 +435,13 @@ _CERT_TEMPLATE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Certificate of Erasure &middot; Agent X</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 24' fill='none' stroke='%238b9db2' stroke-width='2.4' stroke-linecap='round'><path d='M16.97 7.97A7.2 7.2 0 1 0 16.97 16.03'/><circle cx='19.6' cy='12' r='1.25' fill='%238b9db2' stroke='none'/><circle cx='22.6' cy='12' r='0.95' fill='%238b9db2' stroke='none' opacity='.6'/><circle cx='25.2' cy='12' r='0.62' fill='%238b9db2' stroke='none' opacity='.32'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 24' fill='none' stroke='%23a8a8b0' stroke-width='2.4' stroke-linecap='round'><path d='M16.97 7.97A7.2 7.2 0 1 0 16.97 16.03'/><circle cx='19.6' cy='12' r='1.25' fill='%23a8a8b0' stroke='none'/><circle cx='22.6' cy='12' r='0.95' fill='%23a8a8b0' stroke='none' opacity='.6'/><circle cx='25.2' cy='12' r='0.62' fill='%23a8a8b0' stroke='none' opacity='.32'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 <style>
-  :root{--ink:#0f172a;--muted:#64748b;--faint:#94a3b8;--line:#e2e8f0;--line2:#cbd5e1;--brand:#5c7086;--paper:#ffffff;--wash:#f6f7fc}
-  @media (prefers-color-scheme:dark){:root{--wash:#0a0a12;--brand:#8b9db2}}
+  :root{--ink:#0f172a;--muted:#64748b;--faint:#94a3b8;--line:#e2e8f0;--line2:#cbd5e1;--brand:#74747c;--paper:#ffffff;--wash:#f6f7fc}
+  @media (prefers-color-scheme:dark){:root{--wash:#0a0a12;--brand:#a8a8b0}}
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;background:var(--wash);color:var(--ink);font-family:'Geist',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
   .serif{font-family:'Instrument Serif','Spectral',Georgia,serif;font-weight:400}
@@ -702,12 +702,12 @@ _VERIFY_TEMPLATE = """<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Verify a Certificate of Erasure &middot; Agent X</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 24' fill='none' stroke='%238b9db2' stroke-width='2.4' stroke-linecap='round'><path d='M16.97 7.97A7.2 7.2 0 1 0 16.97 16.03'/><circle cx='19.6' cy='12' r='1.25' fill='%238b9db2' stroke='none'/><circle cx='22.6' cy='12' r='0.95' fill='%238b9db2' stroke='none' opacity='.6'/><circle cx='25.2' cy='12' r='0.62' fill='%238b9db2' stroke='none' opacity='.32'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 24' fill='none' stroke='%23a8a8b0' stroke-width='2.4' stroke-linecap='round'><path d='M16.97 7.97A7.2 7.2 0 1 0 16.97 16.03'/><circle cx='19.6' cy='12' r='1.25' fill='%23a8a8b0' stroke='none'/><circle cx='22.6' cy='12' r='0.95' fill='%23a8a8b0' stroke='none' opacity='.6'/><circle cx='25.2' cy='12' r='0.62' fill='%23a8a8b0' stroke='none' opacity='.32'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif&display=swap" rel="stylesheet">
 <style>
- :root{--ink:#0f172a;--muted:#64748b;--faint:#94a3b8;--line:#e2e8f0;--brand:#5c7086;--paper:#fff;--wash:#f6f7fc;--ok:#059669;--bad:#e11d48}
- :root.dark{--ink:#e5e7eb;--muted:#94a3b8;--faint:#64748b;--line:#232336;--brand:#8b9db2;--paper:#12121c;--wash:#0a0a12}
+ :root{--ink:#0f172a;--muted:#64748b;--faint:#94a3b8;--line:#e2e8f0;--brand:#74747c;--paper:#fff;--wash:#f6f7fc;--ok:#059669;--bad:#e11d48}
+ :root.dark{--ink:#e5e7eb;--muted:#94a3b8;--faint:#64748b;--line:#232336;--brand:#a8a8b0;--paper:#12121c;--wash:#0a0a12}
  *{box-sizing:border-box}body{margin:0;background:var(--wash);color:var(--ink);font-family:'Geist',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
  .mono{font-family:'Geist Mono',ui-monospace,monospace}.serif{font-family:'Instrument Serif',Georgia,serif}
  .wrap{max-width:760px;margin:44px auto;padding:0 20px}

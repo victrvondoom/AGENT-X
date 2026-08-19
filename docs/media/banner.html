@@ -5,7 +5,7 @@
 <style>
   :root{
     --bg:#080b14; --bg2:#0c1120; --ink:#e8eaf2; --muted:#8b93a7;
-    --violet:#8b7cf6; --violet2:#a78bfa; --violet3:#6d5ef0; --edge:#232a3d;
+    --violet:#a8a8b0; --violet2:#c0c0c7; --violet3:#a8a8b0; --edge:#232a3d;
     --serif: "Palatino Linotype","Palatino","Iowan Old Style","Georgia",serif;
     --mono: "SF Mono","JetBrains Mono",ui-monospace,Menlo,monospace;
   }
@@ -23,7 +23,7 @@
     background-size:26px 26px;mask-image:radial-gradient(720px 340px at 50% 42%, #000 55%, transparent 100%)}
   /* floating memory particles that drift + dissolve (the "forgetting" motif) */
   .p{position:absolute;border-radius:50%;background:var(--violet2);opacity:0;filter:blur(.2px);
-     box-shadow:0 0 8px rgba(196,214,232,.7);animation:drift 6s linear infinite}
+     box-shadow:0 0 8px rgba(240,241,246,.7);animation:drift 6s linear infinite}
   @keyframes drift{
     0%{opacity:0;transform:translateY(10px) scale(1)}
     18%{opacity:.9}
@@ -35,7 +35,7 @@
   .ring .gap{transform-origin:32px 32px;animation:spin 6s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
   .word{font-family:var(--serif);font-size:96px;line-height:1;letter-spacing:.5px;font-weight:500;
-    background:linear-gradient(92deg,#c9c2ff 0%,#a78bfa 30%,#eae7ff 50%,#a78bfa 70%,#c9c2ff 100%);
+    background:linear-gradient(92deg,#dcdce1 0%,#c0c0c7 30%,#f0f0f4 50%,#c0c0c7 70%,#dcdce1 100%);
     background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
     animation:sheen 6s ease-in-out infinite}
   @keyframes sheen{0%,100%{background-position:0% 0}50%{background-position:100% 0}}
@@ -46,7 +46,7 @@
   /* a row of "nodes" that erase one-by-one, then restore — the product in one gesture */
   .nodes{position:relative;z-index:2;display:flex;gap:14px;margin-top:2px}
   .nodes i{width:9px;height:9px;border-radius:50%;background:var(--violet2);
-    box-shadow:0 0 10px rgba(196,214,232,.8);animation:erase 6s ease-in-out infinite}
+    box-shadow:0 0 10px rgba(240,241,246,.8);animation:erase 6s ease-in-out infinite}
   .nodes i:nth-child(1){animation-delay:.0s}
   .nodes i:nth-child(2){animation-delay:.35s}
   .nodes i:nth-child(3){animation-delay:.7s}
