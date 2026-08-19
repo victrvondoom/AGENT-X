@@ -47,7 +47,7 @@ object-lock console** and the **MCP `select_query`** (both marked 🎙 below).
 ## C. What I capture (⚙️) vs. what you grab (🎙)
 - ⚙️ **Me, automated (Playwright vs. live site, token pre-saved):** beats 1–8, 10, 12, 13, 14.
 - 🎙 **You (needs your login — 2 short clips):**
-  - Beat 9: your AWS S3 console showing the `agent-x-certs-vinayak` bucket object with **Object Lock: COMPLIANCE**.
+  - Beat 9: your AWS S3 console showing the `agent-x-erasure-certs` bucket object with **Object Lock: COMPLIANCE**.
   - Beat 11: an interactive Claude session using the `cockroachdb-cloud` MCP → run `select count(*) from nodes where 'X' = ANY(subjects)` and show it return **0** after a forget.
   - (Both are ~10-second screen recordings; ~2 min of your time.)
 

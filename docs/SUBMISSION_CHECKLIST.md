@@ -3,7 +3,7 @@
 Deadline: **Aug 18, 2026, 5:00pm EDT**. This maps every rule to our deliverable.
 
 ## Required deliverables
-- [ ] **Public code repository** with an OSI license — repo `vinayaksonthalia/agent-x`
+- [ ] **Public code repository** with an OSI license — repo `victrvondoom/AGENT-X`
       (private during build; **flip to public before submitting**). ✅ **MIT** license committed.
 - [ ] **Functional demo app URL** — deployed on AWS (EC2 + S3), reachable by judges.
 - [ ] **Text description** of features & functionality (Devpost fields + README).

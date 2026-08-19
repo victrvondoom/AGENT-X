@@ -13,8 +13,8 @@
         "s3:ListBucket"
       ],
       "Resource": [
-        "arn:aws:s3:::agent-x-certs-vinayak",
-        "arn:aws:s3:::agent-x-certs-vinayak/*"
+        "arn:aws:s3:::agent-x-erasure-certs",
+        "arn:aws:s3:::agent-x-erasure-certs/*"
       ]
     }
   ]

@@ -27,7 +27,7 @@ so that erasure is a single atomic, provable operation.
 - CockroachDB Basic cluster `agent-x` on **AWS Mumbai (ap-south-1)**, cluster id
   `0c59b7a3-0638-498b-bb54-0b45d75b6615`. Unlimited capacity, $400 trial credits, no card = $0.
 - CA cert downloaded to `~/.postgresql/root.crt`.
-- GitHub repo `vinayaksonthalia/agent-x` (private → public at submission). Scaffold pushed.
+- GitHub repo `victrvondoom/AGENT-X` (private → public at submission). Scaffold pushed.
 
 **Next:**
 - [x] **Smoke tests — 11/11 PASS** (see `SMOKE_TESTS.md`). Vector index ON by default on Basic,
