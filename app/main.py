@@ -348,23 +348,40 @@ def api_hold_get(subject: str, workspace: str = "default"):
         return {"subject": subject, "workspace": ws, "hold": hold_status(conn, ws, subject)}
 
 
+@app.get("/cascade", response_class=HTMLResponse)
+def cascade():
+    """The erasure cascade, rendered in 3D: what a forget destroys, what it retains for
+    other subjects, what it is forbidden to touch, and when it refuses outright."""
+    return _serve("cascade.html")
+
+
 @app.get("/api/graph")
 def api_graph(workspace: str = "default"):
     ws = _ws(workspace)
     with store.connect() as conn, conn.cursor() as c:
+        # source_kind travels with every node so a client can show WHY a node would
+        # survive an erasure. Without it the cascade is just "things vanished".
         c.execute(
-            "SELECT id::string, name, type, subjects, (deleted_at IS NOT NULL) "
+            "SELECT id::string, name, type, subjects, (deleted_at IS NOT NULL), source_kind "
             "FROM nodes WHERE workspace = %s",
             (ws,),
         )
-        nodes = [{"id": r[0], "name": r[1], "type": r[2], "subjects": r[3], "deleted": r[4]}
-                 for r in c.fetchall()]
+        nodes = [{"id": r[0], "name": r[1], "type": r[2], "subjects": r[3], "deleted": r[4],
+                  "source_kind": r[5]} for r in c.fetchall()]
         c.execute(
             "SELECT source_id::string, target_id::string, relationship FROM edges WHERE workspace = %s",
             (ws,),
         )
         edges = [{"source": r[0], "target": r[1], "rel": r[2]} for r in c.fetchall()]
-    return {"nodes": nodes, "edges": edges}
+        # Which subjects are currently un-erasable, so a held subject can be shown as
+        # refused rather than silently doing nothing when someone asks to forget it.
+        c.execute(
+            "SELECT subject, hold_reason FROM subject_keys WHERE workspace = %s "
+            "AND held_at IS NOT NULL AND (hold_until IS NULL OR hold_until > now())",
+            (ws,),
+        )
+        holds = {r[0]: r[1] for r in c.fetchall()}
+    return {"nodes": nodes, "edges": edges, "holds": holds}
 
 
 @app.get("/evidence")
