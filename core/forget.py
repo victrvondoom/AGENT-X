@@ -35,6 +35,7 @@ import os
 import re
 
 from db import store
+from core.trust import pipeline_job as _job
 
 
 class LegalHold(Exception):
@@ -83,6 +84,10 @@ def set_hold(subject: str, reason: str, until: str | None = None,
             (workspace, subject,
              f"legal hold placed on {subject}: {reason}" + (f" (until {until})" if until else "")),
         )
+        hj = _job.open_job(conn, kind="erasure", subject=subject, workspace=workspace,
+                           status="NEEDS_REVIEW")
+        _job.record(conn, hj, "hold.placed", "HUMAN",
+                    {"subject": subject, "reason": reason, "until": until})
     return {"subject": subject, "workspace": workspace, "reason": reason, "until": until, "held": True}
 
 
@@ -99,6 +104,9 @@ def release_hold(subject: str, workspace: str = "default") -> dict:
             "INSERT INTO timeline (workspace, kind, subject, detail) VALUES (%s, 'hold', %s, %s)",
             (workspace, subject, f"legal hold released on {subject} — erasure permitted"),
         )
+        rj = _job.open_job(conn, kind="erasure", subject=subject, workspace=workspace,
+                           status="APPROVED")
+        _job.record(conn, rj, "hold.released", "HUMAN", {"subject": subject})
     return {"subject": subject, "workspace": workspace, "released": n > 0}
 
 
@@ -109,8 +117,22 @@ def forget(subject: str, workspace: str = "default") -> dict:
     anchor is taken, so a refused erasure leaves no trace of a half-started one.
     """
     with store.connect() as conn:
+        # Same spine as the document pipeline: one chain, one vocabulary. Opened
+        # before the hold check so that a REFUSAL is recorded too -- a refused
+        # erasure is exactly the event a regulator wants evidence of, and a system
+        # that only logs successes cannot prove it ever said no.
+        job_id = _job.open_job(conn, kind="erasure", subject=subject,
+                               workspace=workspace, status="EXTRACTING")
+        _job.record(conn, job_id, "erasure.requested", "AGENT",
+                    {"subject": subject, "workspace": workspace})
+
         held = hold_status(conn, workspace, subject)
         if held:
+            _job.record(conn, job_id, "erasure.refused", "AGENT", {
+                "subject": subject, "reason": held["reason"], "until": held["until"],
+                "basis": "GDPR Art. 17(3) -- retention obligation in force",
+            })
+            _job.set_status(conn, job_id, "REFUSED")
             raise LegalHold(subject, held["reason"], held["until"])
 
         receipt = {"docs": 0, "nodes": 0, "edges": 0, "invalidated": 0, "authoritative_retained": 0}
@@ -226,8 +248,18 @@ def forget(subject: str, workspace: str = "default") -> dict:
                      f"key crypto-shredded"),
                 )
 
+        # After the transaction commits, so the chain records what actually landed
+        # rather than what was attempted.
+        _job.record(conn, job_id, "erasure.completed", "AGENT", {
+            "subject": subject, "event_id": str(event_id), "t_before": t_before,
+            **receipt,
+        })
+        _job.set_status(conn, job_id, "SIGNED")
+        head, length = _job.chain_head(conn, job_id)
+
     return {"subject": subject, "workspace": workspace, "t_before": t_before,
-            "event_id": str(event_id), "salt": salt.hex(), **receipt}
+            "event_id": str(event_id), "salt": salt.hex(),
+            "job_id": job_id, "chain_head": head, "chain_length": length, **receipt}
 
 
 def prior_state(subject: str, t_before: str, workspace: str = "default") -> list[dict]:

@@ -24,6 +24,36 @@ Delete it *everywhere* · in one atomic transaction · with a signed receipt any
 
 Agent X can. It cascade-deletes an entity's entire knowledge sub-graph — documents, graph nodes, edges, and vectors — in **one ACID transaction**, then proves erasure three ways: an `AS OF SYSTEM TIME` before/after diff, a live vector + graph re-search that returns nothing, and a crypto-shredded, object-locked deletion certificate.
 
+## One product, two pipelines
+
+Agent X performs **verifiable operations on regulated data**. Whatever the operation —
+remembering, processing, or erasing — it is gated by a human when uncertain, recorded on
+a tamper-evident hash chain, attested by a signed certificate, and checkable by someone
+who does not trust this code.
+
+| | Erasure pipeline | Document pipeline (**TrustDoc**) |
+|---|---|---|
+| Question | *is this data really gone?* | *is this document really correct?* |
+| Human gate | legal hold blocks `forget()` | low-confidence fields block the job |
+| Self-verify | re-query the database after erasure | re-read the signed file, compare to approved |
+| Certificate | erasure certificate | compliance certificate |
+
+They are not two systems. `jobs.kind` is a **value** (`'erasure' | 'document'`), both write
+to the **same `audit_log` chain**, and both are verified by the same `/verify`. Adding a
+capability later means a new `kind`, not a second trust system.
+
+```
+core/trust/          audit.py · gate.py · certificate.py     ← the shared spine
+core/forget.py       erasure pipeline
+pipelines/document/  extract · review · generate · sign · self-verify
+```
+
+**Verify any of it without us:** `db/verify_chain.sql` re-derives every hash in raw SQL,
+and `templates/verify_offline.html` checks the ECDSA signature in your browser with no
+server involved — save it, disconnect, open it from disk.
+
+Full write-up: [`docs/TRUSTDOC.md`](docs/TRUSTDOC.md) · demo script: [`DEMO.md`](DEMO.md)
+
 Browsing, recall, the knowledge graph, and `/verify` are open to everyone. Writes are **token-gated** (an erasure product should never let anonymous visitors delete data) — to run **Forget & Prove** yourself, paste the demo token **`agent-x-judge-75a0f127`** in **Settings → Security**.
 
 <div align="center">
