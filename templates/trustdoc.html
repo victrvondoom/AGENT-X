@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en" data-theme="night">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TrustDoc · Agent X</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --void:#08080a; --panel:rgba(20,20,24,.55); --bone:#edeae2; --dim:#9a978f;
+  --hair:rgba(237,234,226,.11);
+  --auto:#dce9ff; --held:#f2e4cc; --ok:#9fdcc0; --bad:#ff8f6b;
+}
+:root[data-theme="day"]{
+  --void:#f5f3ee; --panel:rgba(255,255,255,.72); --bone:#1b1a17; --dim:#6d6a62;
+  --hair:rgba(27,26,23,.14);
+  --auto:#4d6b8a; --held:#8a6f3e; --ok:#2f7d5b; --bad:#c0472a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--void);color:var(--bone);
+  font:15px/1.6 'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.serif{font-family:'Instrument Serif',Georgia,serif}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.wrap{max-width:940px;margin:0 auto;padding:2.5rem 1.5rem 6rem}
+h1{font:400 2rem/1.15 'Instrument Serif',Georgia,serif;margin:0;letter-spacing:-.02em}
+.sub{color:var(--dim);font-size:.9rem;margin-top:.45rem;max-width:62ch}
+
+/* ── the 5-step rail: the whole flow visible at once, so a viewer always knows
+      which stage they are watching ── */
+.rail{display:flex;gap:.4rem;margin:1.8rem 0 .4rem;flex-wrap:wrap}
+.step{flex:1;min-width:8.5rem;border:1px solid var(--hair);border-radius:10px;
+  padding:.55rem .7rem;font-size:.72rem;color:var(--dim);position:relative}
+.step b{display:block;color:var(--bone);font-size:.8rem;font-weight:600;margin-top:.1rem}
+.step.on{border-color:var(--bone);color:var(--bone)}
+.step.done{border-color:var(--ok)}
+.step.done::after{content:"✓";position:absolute;right:.6rem;top:.5rem;color:var(--ok)}
+
+.card{background:var(--panel);border:1px solid var(--hair);border-radius:14px;
+  padding:1.15rem 1.3rem;margin-top:1rem}
+.card h2{font:600 .95rem inherit;margin:0 0 .2rem}
+.hint{color:var(--dim);font-size:.8rem;margin-bottom:.7rem}
+
+button{font:600 .85rem inherit;border:none;border-radius:999px;cursor:pointer;
+  background:var(--bone);color:var(--void);padding:.6rem 1.3rem}
+button.ghost{background:transparent;color:var(--bone);border:1px solid var(--hair);font-weight:400}
+button:disabled{opacity:.4;cursor:not-allowed}
+input[type=text],input[type=file],textarea{width:100%;background:rgba(0,0,0,.28);
+  color:var(--bone);border:1px solid var(--hair);border-radius:9px;padding:.55rem .7rem;
+  font-family:'JetBrains Mono',monospace;font-size:.82rem}
+textarea{min-height:8rem;resize:vertical}
+
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin-top:.5rem}
+th{text-align:left;color:var(--dim);font-size:.68rem;letter-spacing:.1em;
+  text-transform:uppercase;font-weight:500;padding:.42rem .5rem;border-bottom:1px solid var(--hair)}
+td{padding:.42rem .5rem;border-bottom:1px solid var(--hair)}
+.pill{font-size:.68rem;padding:.12rem .5rem;border-radius:999px;border:1px solid}
+.pill.auto{color:var(--auto);border-color:var(--auto)}
+.pill.human{color:var(--held);border-color:var(--held)}
+.pill.ok{color:var(--ok);border-color:var(--ok)}
+.pill.bad{color:var(--bad);border-color:var(--bad)}
+.banner{border:1px solid var(--bad);color:var(--bad);border-radius:10px;
+  padding:.65rem .85rem;font-size:.8rem;margin-top:.7rem}
+.chain{font-size:.75rem;line-height:1.85}
+.chain .h{color:var(--dim)}
+a{color:var(--dim)}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>TrustDoc</h1>
+  <p class="sub">A regulated document, turned into a signed and compliant one — where
+    every field is confidence-routed, anything uncertain is held for a human, and the
+    result is verifiable by someone who does not trust this application.</p>
+
+  <div class="rail" id="rail"></div>
+  <div id="mode"></div>
+
+  <!-- 1 ─ upload -->
+  <div class="card" id="s1">
+    <h2>1 · Upload</h2>
+    <div class="hint">The document goes to Nutrient DWS <span class="mono">/extract</span>,
+      which returns each field with a confidence signal and a citation back to the page region.</div>
+    <input type="file" id="file">
+    <div style="margin-top:.7rem">
+      <button onclick="upload()">Extract</button>
+      <button class="ghost" onclick="loadDemo()">Use a recorded extraction</button>
+    </div>
+    <div id="upErr"></div>
+  </div>
+
+  <!-- 2 ─ routing -->
+  <div class="card hide" id="s2">
+    <h2>2 · Confidence gate</h2>
+    <div class="hint">Per-field-type thresholds, not one number. Absent confidence is its
+      own case — it means <i>no signal</i>, not <i>low</i>, so it always goes to a person.</div>
+    <table id="fields"></table>
+    <div id="counts" style="margin-top:.6rem;font-size:.82rem;color:var(--dim)"></div>
+  </div>
+
+  <!-- 3 ─ review -->
+  <div class="card hide" id="s3">
+    <h2>3 · Human review</h2>
+    <div class="hint">Nothing downstream runs until every held field has been ruled on.
+      The guard is in SQL, so it cannot be bypassed by calling the API differently.</div>
+    <div id="review"></div>
+  </div>
+
+  <!-- 4 ─ sign -->
+  <div class="card hide" id="s4">
+    <h2>4 · Generate, sign, self-verify</h2>
+    <div class="hint">After signing, the agent re-reads the document it just produced and
+      compares every field to what the human approved. A mismatch fails the job.</div>
+    <div id="signOut"></div>
+  </div>
+
+  <!-- 5 ─ verify -->
+  <div class="card hide" id="s5">
+    <h2>5 · Verify it yourself</h2>
+    <div class="hint">Three independent ways to check this without trusting us.</div>
+    <div id="verifyOut"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const STEPS = [['Upload','extract'],['Route','confidence gate'],['Review','human gate'],
+               ['Sign','self-verify'],['Verify','independently']];
+let JOB = null, STAGE = 0;
+
+function rail(){
+  $('rail').innerHTML = STEPS.map(([t,s],i)=>
+    `<div class="step ${i===STAGE?'on':''} ${i<STAGE?'done':''}">${i+1}<b>${t}</b>${s}</div>`).join('');
+}
+function show(n){ STAGE = n; rail(); for(let i=1;i<=5;i++) $('s'+i).classList.toggle('hide', i>n+1); }
+
+(async function mode(){
+  try{
+    const s = await (await fetch('/api/doc/dws-status')).json();
+    if(!s.configured) $('mode').innerHTML =
+      '<div class="banner">DWS is not configured (no DWS_API_KEY). Live extraction and ' +
+      'the embedded Viewer are unavailable — use “recorded extraction” to walk the flow. ' +
+      'Everything after extraction is real.</div>';
+  }catch{}
+})();
+
+async function upload(){
+  const f = $('file').files[0];
+  if(!f){ $('upErr').innerHTML = '<div class="banner">Choose a file first.</div>'; return; }
+  const fd = new FormData(); fd.append('file', f); fd.append('doc_type','invoice');
+  const r = await fetch('/api/doc/upload', {method:'POST', body:fd});
+  const d = await r.json();
+  if(!r.ok){
+    const det = typeof d.detail === 'string' ? d.detail : (d.detail?.detail || JSON.stringify(d.detail));
+    $('upErr').innerHTML = `<div class="banner">${esc(det)}</div>`;
+    return;
+  }
+  JOB = d.job_id; await refresh(); show(1);
+}
+
+async function loadDemo(){
+  const r = await fetch('/api/doc/demo-job', {method:'POST'});
+  if(!r.ok){ $('upErr').innerHTML = '<div class="banner">demo endpoint unavailable</div>'; return; }
+  JOB = (await r.json()).job_id; await refresh(); show(1);
+}
+
+async function refresh(){
+  const j = await (await fetch('/api/doc/jobs/' + JOB)).json();
+  $('fields').innerHTML =
+    '<tr><th>Field</th><th>Value</th><th>Conf</th><th>OCR</th><th>Route</th><th>Why</th></tr>' +
+    j.fields.map(f=>`<tr><td>${esc(f.name)}</td><td class="mono">${esc(f.value??'')}</td>
+      <td class="mono">${f.confidence==null?'—':f.confidence.toFixed(2)}</td>
+      <td class="mono">${f.recognition==null?'—':f.recognition.toFixed(2)}</td>
+      <td><span class="pill ${f.decision==='AUTO'?'auto':'human'}">${f.decision}</span></td>
+      <td style="color:var(--dim)">${esc(f.reason??'')}</td></tr>`).join('');
+  $('counts').textContent =
+    `${j.auto} auto-accepted · ${j.needs_review} held for review · ${j.remaining} still outstanding · status ${j.status}`;
+
+  $('review').innerHTML = j.pending.length
+    ? j.pending.map(f=>`
+        <div style="border-bottom:1px solid var(--hair);padding:.7rem 0">
+          <b>${esc(f.name)}</b> <span style="color:var(--held);font-size:.78rem">${esc(f.reason)}</span>
+          <input type="text" id="v_${f.id}" value="${esc(f.value??'')}" style="margin-top:.45rem">
+          <div style="margin-top:.5rem">
+            <button onclick="rule('${f.id}','ACCEPT')">Accept</button>
+            <button class="ghost" onclick="rule('${f.id}','CORRECT')">Save correction</button>
+          </div></div>`).join('')
+    : `<div>Nothing outstanding. Status <b>${esc(j.status)}</b>.
+         ${j.status==='APPROVED' ? '<div style="margin-top:.7rem"><button onclick="finalize()">Generate &amp; sign</button></div>' : ''}</div>`;
+  if(j.pending.length) show(2); else if(j.status==='APPROVED') show(3);
+}
+
+async function rule(fid, action){
+  const body = {field_id:fid, action, reviewer:'v.kumar'};
+  if(action==='CORRECT') body.new_value = $('v_'+fid).value;
+  const r = await fetch(`/api/doc/jobs/${JOB}/review`,
+    {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!r.ok){ const d=await r.json(); alert(typeof d.detail==='string'?d.detail:JSON.stringify(d.detail)); return; }
+  await refresh();
+}
+
+async function finalize(){
+  const r = await fetch(`/api/doc/jobs/${JOB}/finalize`, {method:'POST'});
+  const d = await r.json();
+  if(!r.ok){
+    $('signOut').innerHTML = `<div class="banner">self-verify FAILED — ${esc(JSON.stringify(d.detail))}</div>`;
+    show(3); return;
+  }
+  $('signOut').innerHTML = `
+    <table>
+      <tr><th>Document sha256</th><td class="mono">${esc(d.document_sha256)}</td></tr>
+      <tr><th>Size</th><td>${d.bytes} bytes</td></tr>
+      <tr><th>Embedded PDF signature</th><td>${d.document_signature_embedded
+          ? '<span class="pill ok">yes</span>'
+          : '<span class="pill bad">no — needs DWS_API_KEY</span>'}</td></tr>
+      <tr><th>Detached signature</th><td class="mono">${esc(d.detached_signature.algorithm||'unsigned')}</td></tr>
+      <tr><th>Self-verify</th><td><span class="pill ok">${esc(d.self_verify)}</span>
+          — ${d.fields_checked} fields re-read from the generated file</td></tr>
+    </table>`;
+  show(4); await verifyPanel();
+}
+
+async function verifyPanel(){
+  const a = await (await fetch(`/api/doc/jobs/${JOB}/audit`)).json();
+  const c = await (await fetch(`/api/doc/jobs/${JOB}/certificate`)).json().catch(()=>null);
+  $('verifyOut').innerHTML = `
+    <div class="chain mono">${a.chain.map(e=>{
+      const d=e.detail, who = e.actor==='HUMAN' ? (d.reviewer||'human') : e.actor.toLowerCase();
+      let what = e.step;
+      if(e.step==='review') what = `review ${d.field} · ${d.action}` +
+        (d.changed?` · "${esc(d.machine_value??'')}" → "${esc(d.final_value??'')}"`:'');
+      if(e.step==='self-verify') what = `self-verify: ${d.result}`;
+      return `<div><span class="h">${String(e.seq).padStart(2,'0')}</span> ${esc(what)} <span class="h">— ${esc(who)}</span></div>`;
+    }).join('')}</div>
+    <div style="margin-top:.6rem"><span class="pill ${a.verification.ok?'ok':'bad'}">
+      ${a.verification.rows} rows — ${esc(a.verification.reason)}</span></div>
+
+    <div style="margin-top:1.1rem;border-top:1px solid var(--hair);padding-top:.9rem">
+      <b style="font-size:.85rem">Check it without us</b>
+      <ol style="color:var(--dim);font-size:.82rem;line-height:1.9;padding-left:1.1rem">
+        <li><a href="/verify-offline" target="_blank">Open the offline verifier</a>, save it to
+            disk, turn your network off, and paste the certificate. It checks the ECDSA
+            signature in your browser.</li>
+        <li>Run the SQL in <span class="mono">db/verify_chain.sql</span> against the database.
+            It re-derives every hash with <span class="mono">digest()</span> — our code is
+            not involved.</li>
+        <li>Compare the public key in the certificate against the one published separately.
+            A certificate cannot vouch for its own key.</li>
+      </ol>
+      <textarea class="mono" readonly>${c ? esc(JSON.stringify(c, null, 2)) : 'certificate not issued yet'}</textarea>
+    </div>`;
+}
+
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+show(0);
+</script>
+</body>
+</html>

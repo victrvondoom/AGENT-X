@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en" data-theme="night">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Field Review · Agent X</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Same tokens as the rest of the product — this is one application, so the review
+   screen must not look like a bolted-on admin page. */
+:root{
+  --void:#08080a; --ink:20,20,24; --bone:#edeae2; --bone-dim:#9a978f;
+  --hair:rgba(237,234,226,.10);
+  --auto:#dce9ff; --held:#f2e4cc; --done:#9fdcc0; --refuse:#ff8f6b;
+}
+:root[data-theme="day"]{
+  --void:#f5f3ee; --ink:255,255,255; --bone:#1b1a17; --bone-dim:#6d6a62;
+  --hair:rgba(27,26,23,.14);
+  --auto:#4d6b8a; --held:#8a6f3e; --done:#2f7d5b; --refuse:#c0472a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--void);color:var(--bone);
+  font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.serif{font-family:'Instrument Serif',Georgia,serif}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.wrap{max-width:1080px;margin:0 auto;padding:2.5rem 1.5rem 5rem}
+h1{font-size:1.9rem;font-weight:400;letter-spacing:-.02em;margin:0}
+.sub{color:var(--bone-dim);font-size:.875rem;margin-top:.4rem;line-height:1.6}
+
+.card{background:rgba(var(--ink),.5);border:1px solid var(--hair);border-radius:14px;
+  padding:1.1rem 1.25rem;margin-top:1rem}
+.mono-sm{font-size:.72rem;color:var(--bone-dim)}
+
+.bar{display:flex;gap:.5rem;align-items:center;margin-top:1.25rem;flex-wrap:wrap}
+.chip{font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;
+  border:1px solid var(--hair);border-radius:999px;padding:.3rem .75rem;color:var(--bone-dim)}
+.chip.warn{border-color:var(--refuse);color:var(--refuse)}
+.chip.ok{border-color:var(--done);color:var(--done)}
+
+.field{border:1px solid var(--hair);border-radius:12px;padding:1rem 1.1rem;margin-top:.7rem;
+  background:rgba(var(--ink),.42)}
+.field.reviewed{opacity:.55}
+.fh{display:flex;align-items:baseline;gap:.7rem;flex-wrap:wrap}
+.fname{font-weight:600;font-size:.95rem}
+.why{color:var(--held);font-size:.75rem}
+.meta{margin-left:auto;font-size:.72rem;color:var(--bone-dim)}
+input[type=text]{width:100%;margin-top:.6rem;background:rgba(var(--ink),.75);
+  border:1px solid var(--hair);border-radius:9px;color:var(--bone);padding:.55rem .7rem;
+  font-family:'JetBrains Mono',monospace;font-size:.875rem}
+input[type=text]:focus{outline:none;border-color:var(--bone-dim)}
+.acts{display:flex;gap:.5rem;margin-top:.7rem}
+button{font-family:inherit;font-size:.8125rem;border-radius:9px;cursor:pointer;
+  border:1px solid var(--hair);background:rgba(var(--ink),.6);color:var(--bone);
+  padding:.5rem .95rem;transition:border-color .2s}
+button:hover{border-color:var(--bone-dim)}
+button.primary{background:var(--bone);color:var(--void);font-weight:600;border:none}
+button:disabled{opacity:.4;cursor:not-allowed}
+
+table{width:100%;border-collapse:collapse;margin-top:.6rem;font-size:.8125rem}
+th{text-align:left;font-weight:500;color:var(--bone-dim);font-size:.7rem;
+  letter-spacing:.1em;text-transform:uppercase;padding:.45rem .5rem;
+  border-bottom:1px solid var(--hair)}
+td{padding:.45rem .5rem;border-bottom:1px solid var(--hair)}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:.45rem}
+
+#chain{font-size:.75rem;line-height:1.9;overflow-x:auto}
+#chain .h{color:var(--bone-dim)}
+.banner{border:1px solid var(--refuse);color:var(--refuse);border-radius:10px;
+  padding:.7rem .9rem;font-size:.8125rem;margin-top:1rem}
+a{color:var(--bone-dim)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 class="serif">Field Review</h1>
+  <div class="sub">Only the fields the confidence gate refused to accept unattended.
+    Nothing downstream runs until every one has been ruled on.</div>
+
+  <div class="bar">
+    <input type="text" id="jobId" placeholder="job id" style="max-width:24rem;margin:0">
+    <button onclick="load()">Load</button>
+    <span id="chips"></span>
+  </div>
+
+  <div id="mode"></div>
+  <div id="pending"></div>
+
+  <div class="card" id="allWrap" style="display:none">
+    <div class="mono-sm">ALL FIELDS</div>
+    <table id="all"></table>
+  </div>
+
+  <div class="card" id="chainWrap" style="display:none">
+    <div class="mono-sm">AUDIT CHAIN — who changed what, and when</div>
+    <div id="chain" class="mono"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const q = new URLSearchParams(location.search);
+if (q.get('job')) $('jobId').value = q.get('job');
+
+let JOB = null;
+
+/* Say which mode we are in rather than silently degrading. If DWS is not
+   configured there is no Viewer session, so the source-region highlight is
+   unavailable and the reviewer edits the value directly. Hiding that would let a
+   reviewer believe they had checked a field against the document when they had
+   not. */
+async function checkMode(){
+  try{
+    const s = await (await fetch('/api/doc/dws-status')).json();
+    $('mode').innerHTML = s.configured ? '' :
+      '<div class="banner">DWS is not configured (no DWS_API_KEY), so the document ' +
+      'Viewer cannot be embedded and source regions are not highlighted. Values below ' +
+      'are still fully editable, and every ruling is still recorded on the audit chain.</div>';
+  }catch{ $('mode').innerHTML = ''; }
+}
+
+async function load(){
+  const id = $('jobId').value.trim();
+  if(!id) return;
+  const r = await fetch('/api/doc/jobs/' + encodeURIComponent(id));
+  if(!r.ok){ $('pending').innerHTML = '<div class="banner">job not found</div>'; return; }
+  JOB = await r.json();
+  render();
+  renderChain(id);
+}
+
+function render(){
+  const j = JOB;
+  $('chips').innerHTML =
+    `<span class="chip ${j.remaining ? 'warn' : 'ok'}">${j.status}</span>` +
+    `<span class="chip">${j.auto} auto</span>` +
+    `<span class="chip">${j.reviewed}/${j.needs_review} reviewed</span>` +
+    (j.corrected ? `<span class="chip warn">${j.corrected} corrected</span>` : '');
+
+  $('pending').innerHTML = j.pending.length
+    ? j.pending.map(f => `
+        <div class="field">
+          <div class="fh">
+            <span class="fname">${esc(f.name)}</span>
+            <span class="why">${esc(f.reason)}</span>
+            <span class="meta">${f.confidence == null ? 'no confidence signal'
+                : 'confidence ' + f.confidence.toFixed(2)}${
+                f.recognition != null ? ' · ocr ' + f.recognition.toFixed(2) : ''}</span>
+          </div>
+          <input type="text" id="v_${f.id}" value="${esc(f.value ?? '')}">
+          <div class="acts">
+            <button class="primary" onclick="decide('${f.id}','ACCEPT')">Accept as extracted</button>
+            <button onclick="decide('${f.id}','CORRECT')">Save correction</button>
+          </div>
+        </div>`).join('')
+    : `<div class="card">Nothing awaiting review. Job is <b>${esc(j.status)}</b>.</div>`;
+
+  $('allWrap').style.display = 'block';
+  $('all').innerHTML =
+    '<tr><th>Field</th><th>Value</th><th>Conf</th><th>Route</th><th>Reviewer</th></tr>' +
+    j.fields.map(f => {
+      const col = f.decision === 'AUTO' ? 'var(--auto)'
+                : f.reviewed_by ? 'var(--done)' : 'var(--held)';
+      return `<tr>
+        <td><span class="dot" style="background:${col}"></span>${esc(f.name)}</td>
+        <td class="mono">${esc(f.value ?? '')}</td>
+        <td class="mono">${f.confidence == null ? '—' : f.confidence.toFixed(2)}</td>
+        <td>${f.decision}</td>
+        <td>${esc(f.reviewed_by ?? '')}</td></tr>`;
+    }).join('');
+}
+
+async function decide(fieldId, action){
+  const reviewer = prompt('Your name, for the audit record:', 'v.kumar');
+  if(!reviewer) return;
+  const body = {field_id: fieldId, action, reviewer};
+  if(action === 'CORRECT') body.new_value = $('v_' + fieldId).value;
+  const r = await fetch(`/api/doc/jobs/${encodeURIComponent(JOB.job_id)}/review`, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const out = await r.json();
+  if(!r.ok){ alert(typeof out.detail === 'string' ? out.detail : JSON.stringify(out.detail)); return; }
+  if(out.resumed) alert('All fields reviewed — job resumed to APPROVED.');
+  load();
+}
+
+async function renderChain(id){
+  const r = await fetch(`/api/doc/jobs/${encodeURIComponent(id)}/audit`);
+  if(!r.ok) return;
+  const d = await r.json();
+  $('chainWrap').style.display = 'block';
+  $('chain').innerHTML = d.chain.map(e => {
+    const who = e.actor === 'HUMAN' ? (e.detail.reviewer || 'human') : e.actor.toLowerCase();
+    let what = e.step;
+    if(e.step === 'review')
+      what = `review ${e.detail.field} · ${e.detail.action}` +
+             (e.detail.changed ? ` · "${esc(e.detail.machine_value ?? '')}" -> "${esc(e.detail.final_value ?? '')}"` : '');
+    return `<div><span class="h">${String(e.seq).padStart(2,'0')}</span> ` +
+           `${esc(what)} <span class="h">— ${esc(who)} — ${esc(e.ts)} — ${e.content_hash.slice(0,12)}…</span></div>`;
+  }).join('') +
+  `<div style="margin-top:.6rem" class="${d.verification.ok ? '' : 'banner'}">` +
+  `chain: ${d.verification.rows} rows — ${esc(d.verification.reason)}</div>`;
+}
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+checkMode();
+if($('jobId').value) load();
+</script>
+</body>
+</html>

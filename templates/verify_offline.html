@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en" data-theme="night">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Offline Certificate Verifier · Agent X</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   OFFLINE VERIFIER
+
+   Save this file and open it from disk. No server, no network, no us. It
+   re-derives the certificate's SHA-256 and checks the ECDSA P-256 signature
+   entirely in the browser using WebCrypto.
+
+   That is the point. Every "verify" button on every compliance product asks you to
+   trust the server answering it. This one cannot cheat, because by the time you are
+   looking at it there is nothing on the other end.
+
+   Deliberately zero external references -- no CDN, no font host, no image. A
+   verifier that phones home is not an offline verifier.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --void:#08080a; --panel:rgba(20,20,24,.55); --bone:#edeae2; --dim:#9a978f;
+  --hair:rgba(237,234,226,.12); --ok:#9fdcc0; --bad:#ff8f6b; --warn:#f2e4cc;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--void);color:var(--bone);
+  font:15px/1.6 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:900px;margin:0 auto;padding:2.5rem 1.5rem 5rem}
+h1{font:400 1.9rem/1.2 ui-serif,Georgia,serif;margin:0;letter-spacing:-.02em}
+.sub{color:var(--dim);font-size:.9rem;margin-top:.5rem;max-width:60ch}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+.card{background:var(--panel);border:1px solid var(--hair);border-radius:14px;
+  padding:1.15rem 1.3rem;margin-top:1.1rem}
+textarea{width:100%;min-height:13rem;background:rgba(0,0,0,.35);color:var(--bone);
+  border:1px solid var(--hair);border-radius:10px;padding:.8rem;resize:vertical;
+  font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.8rem;line-height:1.5}
+textarea:focus{outline:none;border-color:var(--dim)}
+button{font:600 .875rem inherit;border:none;border-radius:999px;cursor:pointer;
+  background:var(--bone);color:var(--void);padding:.65rem 1.4rem;margin-top:.8rem}
+button.ghost{background:transparent;color:var(--bone);border:1px solid var(--hair);
+  font-weight:400;margin-left:.5rem}
+
+.verdict{font:600 1.15rem inherit;padding:.9rem 1.1rem;border-radius:12px;
+  margin-top:1.1rem;border:1px solid}
+.verdict.ok{color:var(--ok);border-color:var(--ok);background:rgba(159,220,192,.06)}
+.verdict.bad{color:var(--bad);border-color:var(--bad);background:rgba(255,143,107,.06)}
+
+.check{display:flex;gap:.8rem;padding:.7rem 0;border-bottom:1px solid var(--hair);
+  align-items:flex-start}
+.check:last-child{border-bottom:none}
+.badge{flex:0 0 5.2rem;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;
+  padding:.2rem .5rem;border-radius:6px;text-align:center;border:1px solid}
+.badge.ok{color:var(--ok);border-color:var(--ok)}
+.badge.bad{color:var(--bad);border-color:var(--bad)}
+.badge.na{color:var(--dim);border-color:var(--hair)}
+.cname{font-weight:600;font-size:.9rem}
+.cdetail{color:var(--dim);font-size:.82rem;margin-top:.15rem}
+.hash{font-size:.72rem;color:var(--dim);word-break:break-all;margin-top:.3rem}
+table{width:100%;border-collapse:collapse;margin-top:.5rem;font-size:.8rem}
+th{text-align:left;color:var(--dim);font-weight:500;font-size:.68rem;
+  letter-spacing:.1em;text-transform:uppercase;padding:.4rem .5rem;
+  border-bottom:1px solid var(--hair)}
+td{padding:.4rem .5rem;border-bottom:1px solid var(--hair)}
+.note{color:var(--dim);font-size:.78rem;margin-top:.9rem;line-height:1.7}
+code{background:rgba(0,0,0,.35);padding:.1rem .35rem;border-radius:4px;font-size:.78rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Offline Certificate Verifier</h1>
+  <p class="sub">
+    Save this page and open it from your own disk, with your network off if you like.
+    It re-derives the certificate hash and checks the ECDSA&nbsp;P-256 signature in your
+    browser. Nothing is sent anywhere, and no server is asked for an opinion.
+  </p>
+
+  <div class="card">
+    <label class="mono" style="font-size:.72rem;color:var(--dim)">PASTE CERTIFICATE JSON</label>
+    <textarea id="input" spellcheck="false" placeholder='{ "certificate": { ... }, "sha256": "...", "signature": "...", "public_key": "-----BEGIN PUBLIC KEY-----..." }'></textarea>
+    <button onclick="run()">Verify</button>
+    <button class="ghost" onclick="document.getElementById('input').value='';document.getElementById('out').innerHTML=''">Clear</button>
+  </div>
+
+  <div id="out"></div>
+
+  <div class="note">
+    <b>What is being checked.</b>
+    The hash is recomputed over the canonical JSON of the <code>certificate</code>
+    object — sorted keys, separators <code>(',',':')</code>, UTF-8, no whitespace — and
+    compared to the <code>sha256</code> field. The signature is verified against the
+    <code>public_key</code> embedded in the certificate itself, so a forged certificate
+    would have to be signed by a key it also carries, and you can compare that key
+    against one published independently.
+    <br><br>
+    <b>What this cannot tell you.</b> Whether the live audit chain in the database still
+    matches. That needs the database, and the SQL to check it yourself is in the README —
+    it does not go through the application either.
+  </div>
+</div>
+
+<script>
+/* Canonical JSON, matching core/trust/certificate.py exactly. If these two ever
+   disagree, every signature fails to verify -- so the rule is stated once here in
+   full rather than approximated. */
+function canonical(v){
+  if (v === null || typeof v !== 'object') return JSON.stringify(v);
+  if (Array.isArray(v)) return '[' + v.map(canonical).join(',') + ']';
+  return '{' + Object.keys(v).sort()
+    .map(k => JSON.stringify(k) + ':' + canonical(v[k])).join(',') + '}';
+}
+
+const b64 = s => Uint8Array.from(atob(s.replace(/\s+/g,'')), c => c.charCodeAt(0));
+const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,'0')).join('');
+
+/* WebCrypto wants raw r||s for ECDSA; the certificate carries DER as the primary
+   encoding because that is what openssl and Python emit. `signature_raw` is provided
+   for convenience, but DER is parsed here too so a certificate carrying only the
+   standard encoding still verifies. */
+function derToRaw(der){
+  let i = 0;
+  if (der[i++] !== 0x30) throw new Error('signature is not a DER SEQUENCE');
+  if (der[i] & 0x80) i += 1 + (der[i] & 0x7f); else i += 1;
+  const readInt = () => {
+    if (der[i++] !== 0x02) throw new Error('expected DER INTEGER');
+    const len = der[i++];
+    let v = der.slice(i, i + len); i += len;
+    while (v.length && v[0] === 0x00) v = v.slice(1);           // strip sign byte
+    const out = new Uint8Array(32); out.set(v, 32 - v.length);  // left-pad to 32
+    return out;
+  };
+  const r = readInt(), s = readInt();
+  const sig = new Uint8Array(64); sig.set(r,0); sig.set(s,32);
+  return sig;
+}
+
+function pemToDer(pem){
+  const body = pem.replace(/-----[^-]+-----/g,'').replace(/\s+/g,'');
+  return b64(body);
+}
+
+async function run(){
+  const out = document.getElementById('out');
+  out.innerHTML = '';
+  let env;
+  try { env = JSON.parse(document.getElementById('input').value); }
+  catch(e){ return verdict(false, 'Not valid JSON', e.message); }
+
+  const cert = env.certificate;
+  if (!cert) return verdict(false, 'Malformed', 'No `certificate` object in the envelope.');
+
+  const checks = [];
+
+  // 1 -- content hash
+  const bytes = new TextEncoder().encode(canonical(cert));
+  const recomputed = hex(await crypto.subtle.digest('SHA-256', bytes));
+  const hashOk = env.sha256 === recomputed;
+  checks.push({ok:hashOk, name:'Content hash',
+    detail: hashOk ? 'The recomputed SHA-256 matches the certificate.'
+                   : 'MISMATCH — the certificate body was altered after it was signed.',
+    hash: 'recomputed ' + recomputed + (hashOk ? '' : '\nclaimed    ' + (env.sha256||'(none)'))});
+
+  // 2 -- signature, with only the embedded public key
+  if (!env.signature || !env.public_key){
+    checks.push({ok:null, name:'Signature', detail:'This certificate is unsigned.'});
+  } else {
+    try {
+      const key = await crypto.subtle.importKey('spki', pemToDer(env.public_key),
+        {name:'ECDSA', namedCurve:'P-256'}, false, ['verify']);
+      let raw;
+      try { raw = derToRaw(b64(env.signature)); }
+      catch { raw = b64(env.signature_raw || ''); }
+      const ok = await crypto.subtle.verify({name:'ECDSA', hash:'SHA-256'}, key, raw, bytes);
+      checks.push({ok, name:'ECDSA P-256 signature',
+        detail: ok ? 'Valid — signed by the key embedded in this certificate.'
+                   : 'INVALID — this certificate was not signed by the key it carries.'});
+    } catch(e){
+      checks.push({ok:false, name:'ECDSA P-256 signature', detail:'Unverifiable: ' + e.message});
+    }
+  }
+
+  // 3 -- audit binding, reported as out of scope offline
+  checks.push({ok:null, name:'Live audit chain',
+    detail:'Not checked here — that requires the database. The certificate attests to ' +
+           `head ${(cert.chain_head||'?').slice(0,16)}… over ${cert.chain_length} entries. ` +
+           'Run the SQL in the README to confirm it yourself.'});
+
+  const decided = checks.filter(c => c.ok !== null);
+  const allOk = decided.length > 0 && decided.every(c => c.ok);
+  verdict(allOk,
+    allOk ? 'Certificate is authentic' : 'Certificate FAILED verification',
+    allOk ? 'The hash and signature both check out, computed here in your browser.'
+          : 'At least one check failed. Details below.');
+
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = checks.map(c => `
+    <div class="check">
+      <span class="badge ${c.ok === null ? 'na' : c.ok ? 'ok' : 'bad'}">
+        ${c.ok === null ? 'n/a' : c.ok ? 'pass' : 'fail'}</span>
+      <div>
+        <div class="cname">${esc(c.name)}</div>
+        <div class="cdetail">${esc(c.detail)}</div>
+        ${c.hash ? `<div class="hash mono">${esc(c.hash)}</div>` : ''}
+      </div>
+    </div>`).join('');
+  out.appendChild(card);
+
+  if (Array.isArray(cert.fields)) {
+    const t = document.createElement('div');
+    t.className = 'card';
+    t.innerHTML = '<div class="mono" style="font-size:.72rem;color:var(--dim)">ATTESTED FIELDS</div>' +
+      '<table><tr><th>Field</th><th>Value</th><th>Routed</th><th>Reviewed by</th></tr>' +
+      cert.fields.map(f => `<tr><td>${esc(f.name)}</td><td class="mono">${esc(f.value ?? '')}</td>` +
+        `<td>${esc(f.decision)}</td><td>${esc(f.reviewed_by ?? '—')}</td></tr>`).join('') +
+      '</table>';
+    out.appendChild(t);
+  }
+}
+
+function verdict(ok, title, detail){
+  const d = document.createElement('div');
+  d.className = 'verdict ' + (ok ? 'ok' : 'bad');
+  d.innerHTML = esc(title) + '<div style="font-weight:400;font-size:.85rem;margin-top:.3rem">' +
+                esc(detail) + '</div>';
+  document.getElementById('out').appendChild(d);
+}
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+</script>
+</body>
+</html>

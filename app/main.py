@@ -37,7 +37,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATES = os.path.join(ROOT, "templates")
 STATIC = os.path.join(ROOT, "static")
 
-app = FastAPI(title="Agent X", description="Verifiable forgetting for AI-agent memory")
+app = FastAPI(title="Agent X",
+              description="Verifiable operations on regulated data: remember, process, "
+                          "and erase -- every action gated, audited, signed, and "
+                          "independently verifiable.")
+
+# The document pipeline shares this app, this database and this audit chain. One
+# product with two pipelines, not two products in one repository.
+from app.trustdoc import router as trustdoc_router   # noqa: E402
+app.include_router(trustdoc_router)
 if os.path.isdir(STATIC):
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
@@ -100,6 +108,19 @@ def landing():
 @app.get("/app", response_class=HTMLResponse)
 def console():
     return _serve("index.html")
+
+
+@app.get("/trustdoc", response_class=HTMLResponse)
+def trustdoc_ui():
+    """The five-screen document flow: upload, gate, review, sign, verify."""
+    return _serve("trustdoc.html")
+
+
+@app.get("/verify-offline", response_class=HTMLResponse)
+def verify_offline():
+    """Served for convenience, but the point is to SAVE it and open it from disk.
+    It has no external references and talks to nothing."""
+    return _serve("verify_offline.html")
 
 
 # ─────────────────────────────────────────────────────────── /learn — the docs

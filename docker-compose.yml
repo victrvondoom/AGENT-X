@@ -1,0 +1,37 @@
+# Local datastore for the trust spine.
+#
+# The DSN is the ONLY coupling point between the app and the database, so this can
+# be pointed at either engine without touching a line of Python:
+#
+#   Postgres 16 (this file, as specified):
+#     DATABASE_URL=postgresql://trustdoc:trustdoc@localhost:5432/trustdoc
+#
+#   CockroachDB (what the erasure pipeline already runs on — wire-compatible):
+#     DATABASE_URL=postgresql://root@localhost:26257/defaultdb?sslmode=disable
+#
+# Worth stating plainly: this is one product, so running BOTH engines at once would
+# mean two datastores behind a single trust claim, which is the thing that makes an
+# auditor stop trusting the audit. Pick one for a real deployment.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: trustdoc-db
+    environment:
+      POSTGRES_USER: trustdoc
+      POSTGRES_PASSWORD: trustdoc
+      POSTGRES_DB: trustdoc
+      # Deterministic collation, so hash-chain ordering cannot vary by host locale.
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - trustdoc_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trustdoc -d trustdoc"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  trustdoc_pgdata:
