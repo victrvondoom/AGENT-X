@@ -214,6 +214,18 @@ function refreshColors(){
   objects.nodes.forEach(m => {
     const c = new THREE.Color(nodeColor(m.userData.n));
     m.material.color.copy(c);
+    const g = m.userData.cage;
+    if (g){
+      g.material.color.copy(c);
+      g.material.blending = day ? THREE.NormalBlending : THREE.AdditiveBlending;
+      g.material.opacity  = day ? .95 : .72;
+      g.material.needsUpdate = true;
+    }
+    if (m.userData.plinth){
+      m.userData.plinth.material.color.copy(c);
+      m.userData.plinth.material.blending = day ? THREE.NormalBlending : THREE.AdditiveBlending;
+      m.userData.plinth.material.needsUpdate = true;
+    }
     const h = m.userData.halo;
     if (h){
       h.material.color.copy(c);
@@ -307,35 +319,97 @@ function labelSprite(text){
                                 gigantic and far ones unreadable */
     color:new THREE.Color(css('--bone')),
   }));
-  const H = 0.030;
+  const H = 0.022;
   spr.scale.set(cv.width/cv.height * H, H, 1);
   return spr;
 }
 
 /* ── build ─────────────────────────────────────────────────────────────── */
 function clearScene(){
+  // GEO / EDGE_GEO are shared and cached across rebuilds — disposing them here would
+  // free geometry the next build still references.
   root.clear();
   objects = {nodes:[], edges:[], labels:[]};
   if (particles){ particles.geometry.dispose(); particles.material.dispose(); particles = null; }
 }
 
+/* ── one solid per classification ──────────────────────────────────────────
+   Colour alone is a weak channel: it survives neither video compression nor
+   colour-blindness. Giving each class its own SILHOUETTE means the distinction
+   still reads in a grainy screen recording, and the shapes are chosen to argue:
+
+     evidence   icosahedron — a faceted gem; it looks like it can shatter
+     authority  octahedron on a squat column — a monument; it looks immovable
+     shared     dodecahedron — rounder, between the two
+
+   Geometry is baked per classification, so it must be rebuilt when the selected
+   subject changes, not merely recoloured. */
+const GEO = {};
+function geoFor(kind){
+  if (GEO[kind]) return GEO[kind];
+  GEO[kind] =
+    kind === 'spared'    ? new THREE.OctahedronGeometry(1, 0) :
+    kind === 'shared'    ? new THREE.DodecahedronGeometry(0.92, 0) :
+    kind === 'untouched' ? new THREE.DodecahedronGeometry(0.92, 0) :
+                           new THREE.IcosahedronGeometry(0.95, 0);
+  return GEO[kind];
+}
+const EDGE_GEO = {};
+function edgeGeoFor(kind){
+  if (!EDGE_GEO[kind]) EDGE_GEO[kind] = new THREE.EdgesGeometry(geoFor(kind), 1);
+  return EDGE_GEO[kind];
+}
+
+let LAYOUT = null;          // computed once; rebuilding on subject change reuses it
+
 function build(){
   clearScene();
-  const P = layout(G.nodes, G.edges);
+  if (!LAYOUT || LAYOUT.length !== G.nodes.length) LAYOUT = layout(G.nodes, G.edges);
+  const P = LAYOUT;
   const pos = {};
   G.nodes.forEach((n,i) => pos[n.id] = P[i]);
 
-  const sphere = new THREE.SphereGeometry(1, 20, 16);
   G.nodes.forEach((n,i) => {
     const deg = G.edges.filter(e => e.source===n.id || e.target===n.id).length;
-    const r = 0.72 + Math.min(deg,7) * 0.12;
-    const m = new THREE.Mesh(sphere, new THREE.MeshBasicMaterial({
-      color:new THREE.Color(nodeColor(n)), transparent:true, opacity:.95,
+    const r = 1.25 + Math.min(deg,7) * 0.20;   // big enough that the edge cage is the thing you read
+    const kind = SUBJECT ? classify(n, SUBJECT) : (n.source_kind === 'authoritative' ? 'spared' : 'exclusive');
+    const col = new THREE.Color(nodeColor(n));
+
+    const m = new THREE.Mesh(geoFor(kind), new THREE.MeshBasicMaterial({
+      color:col, transparent:true, opacity: kind === 'spared' ? .32 : .5,
     }));
     m.position.set(P[i].x, P[i].y, P[i].z);
     m.scale.setScalar(r);
-    m.userData = {n, home:m.position.clone(), r};
+    m.rotation.set(Math.random()*3, Math.random()*3, Math.random()*3);
+    m.userData = {n, kind, home:m.position.clone(), r};
     root.add(m); objects.nodes.push(m);
+
+    // THE EDGING. The solid is deliberately held translucent so the wireframe
+    // cage is what you actually read — a lit skeleton rather than a shaded ball.
+    // Additive on dark makes the edges glow; day falls back to normal blending
+    // at full opacity, because adding light to paper just clips to white.
+    const cage = new THREE.LineSegments(edgeGeoFor(kind), new THREE.LineBasicMaterial({
+      color:col, transparent:true,
+      opacity: THEME === 'day' ? .95 : .72,
+      blending: THEME === 'day' ? THREE.NormalBlending : THREE.AdditiveBlending,
+      depthWrite:false,
+    }));
+    cage.scale.setScalar(r * 1.02);         // a hair proud of the solid, so it never z-fights
+    cage.position.copy(m.position);
+    cage.rotation.copy(m.rotation);
+    root.add(cage);
+    m.userData.cage = cage;
+
+    // A statute stands on something. The plinth is the only non-symmetric form
+    // in the scene, which is what makes "immovable" read at a glance.
+    if (kind === 'spared'){
+      const plinth = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.CylinderGeometry(r*.95, r*1.15, r*.5, 6)),
+        cage.material.clone());
+      plinth.position.set(P[i].x, P[i].y - r*1.25, P[i].z);
+      root.add(plinth);
+      m.userData.plinth = plinth;
+    }
 
     // Soft halo so a node reads as luminous rather than as a plastic ball.
     // Additive blending only works over a dark ground — adding light to a bright
@@ -380,7 +454,7 @@ function fitCamera(){
   const box = new THREE.Box3().setFromObject(root);
   if (box.isEmpty()) return;
   const size = box.getSize(new THREE.Vector3()).length() || 40;
-  camera.position.set(0, 0, size * 1.02);   // margin so edge nodes and labels stay in frame
+  camera.position.set(0, 0, size * 0.92);   // margin for the larger solids and their plinths   // margin so edge nodes and labels stay in frame
   camera.lookAt(0, 0, 0);
 }
 
@@ -472,28 +546,50 @@ function frame(){
     }
   });
 
+  const dayNow = THEME === 'day';
   objects.nodes.forEach(m => {
-    if (m.userData.dissolve){
-      const k = Math.min(1, (t - m.userData.dissolve) / 700);
-      m.material.opacity = .95 * (1 - k);
-      m.scale.setScalar(m.userData.r * (1 - k * .8));
-      if (m.userData.halo) m.userData.halo.material.opacity = .20 * (1 - k);
-      if (m.userData.label) m.userData.label.material.opacity = .72 * (1 - k);
+    const U = m.userData;
+    U.spin = (U.spin || 0) + dt * (U.kind === 'spared' ? .06 : .28);
+    if (!U.dissolve && !U.pulse) m.rotation.y = U.spin;   // statutes barely turn; evidence drifts
+
+    if (U.dissolve){
+      const k = Math.min(1, (t - U.dissolve) / 700);
+      // The solid goes FIRST and fast; the cage outlives it and then collapses
+      // inward, so a node visibly shatters to a skeleton before it vanishes.
+      m.material.opacity = (U.kind === 'spared' ? .32 : .5) * Math.max(0, 1 - k * 1.9);
+      m.scale.setScalar(U.r * (1 - k * .55));
+      if (U.cage){
+        const ck = Math.min(1, (t - U.dissolve) / 1150);
+        U.cage.material.opacity = .72 * (1 - ck);
+        U.cage.scale.setScalar(U.r * 1.02 * (1 + ck * .5 - ck * ck * 1.25));
+        U.cage.rotation.y += dt * (1.4 + ck * 5);        // spins up as it fails
+      }
+      if (U.halo)  U.halo.material.opacity = .20 * (1 - k);
+      if (U.label) U.label.material.opacity = .75 * (1 - k);
     }
-    if (m.userData.pulse){                            // spared: a brief confident flare
-      const k = (t - m.userData.pulse) / 900;
+
+    if (U.pulse){                                    // spared: a confident flare
+      const k = (t - U.pulse) / 900;
       const e = k < 1 ? Math.sin(k * Math.PI) : 0;
-      m.scale.setScalar(m.userData.r * (1 + e * .55));
-      if (m.userData.halo) m.userData.halo.material.opacity = .20 + e * .5;
-      if (k >= 1) m.userData.pulse = 0;
+      m.scale.setScalar(U.r * (1 + e * .40));
+      if (U.cage){
+        U.cage.scale.setScalar(U.r * 1.02 * (1 + e * .55));
+        U.cage.material.opacity = (dayNow ? .95 : .72) + e * (dayNow ? .05 : 1.2);
+      }
+      if (U.halo) U.halo.material.opacity = (dayNow ? .16 : .20) + e * .55;
+      if (k >= 1) U.pulse = 0;
     }
-    if (m.userData.shield){                           // refused: everything shivers, nothing dies
-      const k = (t - (m.userData.shieldT || (m.userData.shieldT = t))) / 800;
+
+    if (U.shield){                                   // refused: it shivers, nothing dies
+      const k = (t - (U.shieldT || (U.shieldT = t))) / 800;
       const e = k < 1 ? Math.sin(k * Math.PI * 3) * .06 : 0;
-      m.scale.setScalar(m.userData.r * (1 + e));
-      if (k >= 1){ m.userData.shield = 0; m.userData.shieldT = 0; }
+      m.scale.setScalar(U.r * (1 + e));
+      if (U.cage) U.cage.scale.setScalar(U.r * 1.02 * (1 + e * 1.6));
+      if (k >= 1){ U.shield = 0; U.shieldT = 0; }
     }
-    if (m.userData.halo) m.userData.halo.position.copy(m.position);
+
+    if (U.halo) U.halo.position.copy(m.position);
+    if (U.cage && !U.dissolve) U.cage.rotation.y = m.rotation.y;
   });
 
   if (particles){
@@ -556,7 +652,11 @@ function preview(){
   ]);
 }
 
-$('subject').onchange = e => { SUBJECT = e.target.value; refreshColors(); preview(); };
+$('subject').onchange = e => {
+  SUBJECT = e.target.value;
+  build();          // geometry is baked per classification, so this is a rebuild, not a recolour
+  preview();
+};
 $('run').onclick = runCascade;
 $('reset').onclick = () => { running = false; $('run').disabled = false; build(); preview(); };
 $('hold').onclick = async () => {
