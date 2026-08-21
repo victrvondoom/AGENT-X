@@ -230,3 +230,95 @@ def verify_certificate(payload: dict, trusted_public_key: str | None = None):
     from core.trust import certificate as _cert
     with _conn() as conn:
         return _cert.verify(payload, conn, trusted_public_key)
+
+
+# ── Phase 8: transparency checkpoints ──────────────────────────────────────
+@router.post("/checkpoint")
+def publish_checkpoint(note: str = ""):
+    """Publish a Merkle root over every chain currently in the database."""
+    from core.trust import merkle as _merkle
+    with _conn() as conn:
+        return _merkle.checkpoint(conn, note)
+
+
+@router.get("/checkpoints")
+def list_checkpoints(limit: int = 20):
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id::text, merkle_root, leaf_count, note, created_at::text "
+                    "FROM checkpoints ORDER BY created_at DESC LIMIT %s", (limit,))
+        return [{"checkpoint_id": r[0], "merkle_root": r[1], "leaf_count": r[2],
+                 "note": r[3], "created_at": r[4]} for r in cur.fetchall()]
+
+
+@router.get("/jobs/{job_id}/inclusion")
+def inclusion_proof(job_id: str, checkpoint_id: str | None = None):
+    """Prove a job's chain was included in a published checkpoint.
+
+    Without checkpoint_id this uses the most recent checkpoint -- a judge does not
+    need to know a checkpoint id exists to ask "was this included anywhere?".
+    """
+    from core.trust import merkle as _merkle
+    with _conn() as conn:
+        return _merkle.inclusion(conn, job_id, checkpoint_id)
+
+
+# ── Phase 7: sealed audit / redaction ──────────────────────────────────────
+@router.get("/jobs/{job_id}/audit/sealed")
+def sealed_audit(job_id: str):
+    """The chain with sealed rows opened where the subject's key still exists.
+
+    Distinct from /audit: that route returns raw stored detail (ciphertext for
+    sealed rows). This one decrypts what it still can and marks the rest as
+    tombstoned, which is what a reviewer -- rather than a hash-verifier -- needs.
+    """
+    from core.trust import sealed as _sealed, audit as _audit
+    with _conn() as conn:
+        return {"job_id": job_id, "chain": _sealed.readable_chain(conn, job_id),
+                "verification": _audit.verify_chain(conn, job_id)}
+
+
+class RedactReq(BaseModel):
+    workspace: str = "default"
+    subject: str
+    erasure_job: str | None = None
+
+
+@router.post("/redact")
+def redact_subject(r: RedactReq):
+    """Redact a subject's values from their document jobs, retaining the jobs
+    themselves as evidence of lawful handling. Called by the erasure pipeline;
+    exposed directly too, so the two pipelines' shared boundary is inspectable
+    without having to run a full forget()."""
+    from core.trust import sealed as _sealed
+    with _conn() as conn:
+        return _sealed.redact_subject(conn, r.workspace, r.subject, r.erasure_job)
+
+
+# ── the trust spine, over the wire ─────────────────────────────────────────
+@router.get("/spine-data")
+def spine_data(limit: int = 24):
+    """Real chain data for /spine to render, instead of a synthetic demo.
+
+    Interleaved by created_at across BOTH pipeline kinds -- that ordering is
+    itself part of the claim the visual makes, so it must not be sorted by
+    kind or the picture would show two ledgers side by side.
+    """
+    from core.trust import audit as _audit
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id::text, kind, status FROM jobs "
+            "WHERE EXISTS (SELECT 1 FROM audit_log a WHERE a.job_id = jobs.id) "
+            "ORDER BY created_at DESC LIMIT %s", (limit,))
+        jobs = cur.fetchall()
+        jobs.reverse()   # oldest first, so the chain reads left-to-right chronologically
+
+        blocks = []
+        for jid, kind, status in jobs:
+            v = _audit.verify_chain(conn, jid)
+            cur.execute("SELECT count(*) FROM audit_log WHERE job_id=%s AND sealed",
+                        (jid,))
+            shredded = cur.fetchone()[0] > 0
+            blocks.append({"job_id": jid, "pipeline": kind, "status": status,
+                           "rows": v.get("rows", 0), "head": v.get("head"),
+                           "ok": v.get("ok"), "shredded": shredded})
+    return {"blocks": blocks, "count": len(blocks)}

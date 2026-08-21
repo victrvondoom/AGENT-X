@@ -141,7 +141,8 @@ addEventListener('resize', () => {
    Blocks alternate between pipelines deliberately: the interleaving is the
    argument. If erasure and document events sat in separate rows the picture
    would show two ledgers, which is exactly what this architecture is not. */
-const N = 14;
+let N = 14;
+let REAL = null;   // real chain data from /api/doc/spine-data, or null for the demo
 let blocks = [], links = [], merkle = [], state = [];
 
 const boxGeo  = new THREE.BoxGeometry(1.5, 1.5, 1.5);
@@ -161,9 +162,12 @@ function colourOf(i){
 
 function build(){
   root.clear(); blocks = []; links = []; merkle = [];
-  state = Array.from({length:N}, (_, i) => ({
+  state = Array.from({length:N}, (_, i) => REAL ? {
+    pipeline: REAL[i].pipeline, broken: !REAL[i].ok, shredded: REAL[i].shredded,
+    seq:i, jobId: REAL[i].job_id, status: REAL[i].status,
+  } : {
     pipeline: pipelineOf(i), broken:false, shredded:false, seq:i,
-  }));
+  });
 
   for (let i = 0; i < N; i++){
     const x = (i - (N-1)/2) * 2.35;
@@ -227,10 +231,15 @@ function build(){
 
 function fit(){
   const box = new THREE.Box3().setFromObject(root);
-  const size = box.getSize(new THREE.Vector3());
   const c = box.getCenter(new THREE.Vector3());
   root.position.sub(c);
-  camera.position.set(0, 1.5, Math.max(size.x, size.y) * 0.95);
+  // The Merkle tree's height does not scale linearly with block count the way
+  // its width does, so at low N (real chains before many jobs exist) fitting on
+  // size.x/size.y clipped the root out of frame vertically. A bounding-SPHERE fit
+  // guarantees the whole tree fits regardless of its aspect ratio.
+  const sphere = box.getBoundingSphere(new THREE.Sphere());
+  const dist = Math.max(sphere.radius * 2.1, 6);
+  camera.position.set(0, dist * 0.22, dist);
   camera.lookAt(0, 0, 0);
 }
 
@@ -271,6 +280,7 @@ function readout(){
   const shred  = state.filter(s => s.shredded).length;
   const first  = state.findIndex(s => s.tampered);
   $('lines').innerHTML =
+    `<div class="l"><span>source</span><span>${REAL ? 'live database' : 'demo (no chains yet)'}</span></div>` +
     `<div class="l"><span>blocks</span><span>${N}</span></div>` +
     `<div class="l"><span>erasure / document</span><span>${state.filter(s=>s.pipeline==='erasure').length} / ${state.filter(s=>s.pipeline==='document').length}</span></div>` +
     `<div class="l"><span>crypto-shredded</span><span>${shred}</span></div>` +
@@ -339,6 +349,18 @@ function frame(){
   requestAnimationFrame(frame);
 }
 
+async function loadReal(){
+  try{
+    const r = await fetch('/api/doc/spine-data?limit=24');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.blocks && d.blocks.length >= 2){   // fewer than 2 leaves nothing to chain-link visually
+      REAL = d.blocks; N = REAL.length;
+    }
+  }catch{ /* offline preview, or the API route is not mounted -- fall back to the demo */ }
+}
+
+await loadReal();
 build();
 applyTheme(THEME);
 frame();
