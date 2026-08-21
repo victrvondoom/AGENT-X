@@ -28,7 +28,7 @@ the source region.
 
 ---
 
-## The four patterns
+## The six patterns
 
 | # | Pattern | Where |
 |---|---|---|
@@ -36,6 +36,8 @@ the source region.
 | 2 | **Human-in-the-loop approval** | `pipelines/document/review.py` |
 | 3 | **Self-verifying loop** | `pipelines/document/finalize.py` |
 | 4 | **Signed certificate + independent verification** | `core/trust/certificate.py`, `db/verify_chain.sql`, `templates/verify_offline.html` |
+| 5 | **Crypto-shreddable audit detail** | `core/trust/sealed.py` |
+| 6 | **Transparency checkpoints** | `core/trust/merkle.py` |
 
 ### 1 — The confidence gate is not a single threshold
 
@@ -92,6 +94,72 @@ A mismatch sets `FAILED` and names the field. Nothing ships silently.
 2. **Raw SQL** — see below. It *recomputes* every hash rather than reading it back.
 3. **Key comparison** — the certificate carries its public key; compare it to one
    published separately.
+
+### 5 — Crypto-shreddable audit detail: where the two pipelines collide
+
+An audit chain must be immutable or it proves nothing. Erasure must destroy personal
+data. The chain **contains** personal data — a reviewer's name, a corrected account
+number. Deleting a hash-chained row destroys every hash after it. Most systems quietly
+pick one obligation over the other.
+
+The resolution: seal the sensitive half of each entry under the **subject's own key**
+and hash the ciphertext. Erasure destroys the key. Afterwards every hash still matches,
+because the ciphertext was never touched — the chain still proves what happened and
+when — while the content is cryptographically unrecoverable.
+
+```
+chain STILL verifies: 7 rows; all 6 pre-erasure hashes unchanged
+detail now: <crypto-shredded: the key for this subject was destroyed>
+but still legible: field=account_number  action=CORRECT
+```
+
+Only *values* are sealed — step, actor, and timestamp stay clear, so a regulator can
+still read "a human corrected a field on this date" after a shred. A redaction reaches
+a subject's document jobs but **retains the job itself**: the compliance record is
+itself evidence the request was handled lawfully, so deleting it would destroy the
+proof of compliance. Endpoints: `GET /api/doc/jobs/{id}/audit/sealed`,
+`POST /api/doc/redact`.
+
+### 6 — Transparency checkpoints: closing the self-vouching gap
+
+Pattern 4's limitation is real and cannot be closed by cryptography alone: a
+certificate carries the public key its own signature is checked against, so a forger
+can edit a value, sign with their own key, and embed that key. Hash and signature both
+pass — it is a forged document with forged letterhead.
+
+What closes it is **time**. Periodically fold every job's chain into a Merkle root and
+publish it somewhere outside our control — a git commit, a status page. A genuine
+certificate proves it was included in a checkpoint published *before* any dispute; a
+forgery minted afterward cannot be, because inserting it would move a root that is
+already public. Forging stops being "generate a keypair" and becomes "alter the past".
+
+Endpoints: `POST /api/doc/checkpoint`, `GET /api/doc/checkpoints`,
+`GET /api/doc/jobs/{id}/inclusion`. Rendered live at **`/spine`** — the trust chain in
+3D, built from real checkpoint and chain data, not a mock.
+
+---
+
+## API reference
+
+| Method | Path | What |
+|---|---|---|
+| POST | `/api/doc/upload` | extract a document (needs `DWS_API_KEY`) |
+| POST | `/api/doc/demo-job` | seed a job from a recorded extraction, no key needed |
+| GET | `/api/doc/jobs/{id}` | job status, fields, pending review |
+| POST | `/api/doc/jobs/{id}/review` | rule on one field |
+| POST | `/api/doc/jobs/{id}/finalize` | generate, sign, self-verify, certify |
+| GET | `/api/doc/jobs/{id}/certificate` | the portable certificate |
+| POST | `/api/doc/verify` | verify any certificate |
+| GET | `/api/doc/jobs/{id}/audit` | raw chain + verification |
+| GET | `/api/doc/jobs/{id}/audit/sealed` | decrypted chain view |
+| POST | `/api/doc/redact` | redact a subject's field values |
+| POST | `/api/doc/checkpoint` | publish a Merkle root |
+| GET | `/api/doc/checkpoints` | list published checkpoints |
+| GET | `/api/doc/jobs/{id}/inclusion` | prove/disprove checkpoint inclusion |
+| GET | `/api/doc/spine-data` | live chain summary, feeds `/spine` |
+
+Pages: `/trustdoc` (5-screen flow) · `/spine` (trust chain in 3D) ·
+`/verify-offline` (offline certificate verifier) · `/cascade` (erasure cascade in 3D)
 
 ---
 
@@ -155,7 +223,29 @@ python scripts/demo_phase2.py    # confidence gate + routing             PASS
 python scripts/demo_phase3.py    # human review, resume guard             9/9
 python scripts/demo_phase4.py    # sign + self-verify, clean and caught   7/7
 python scripts/demo_phase5.py    # certificate + 4 forgery attacks        8/8
+python scripts/demo_phase7.py    # crypto-shreddable audit detail         8/8
+python scripts/demo_phase8.py    # transparency checkpoints               9/9
+pytest tests/ -v                 # 29 unit tests, DB-dependent ones skip cleanly
 ```
+
+### Scheduled checkpoints
+
+A checkpoint only means something if it is published on a *regular cadence before
+disputes happen* — one minted on demand after the fact proves nothing, since a forger
+could equally mint one on demand. Run on a schedule, not by hand:
+
+```bash
+python scripts/checkpoint_cron.py
+# 2026-08-21 02:20:34+00  root=505a7ef0...  leaves=59  id=144ebb48-...
+```
+
+```cron
+0 * * * *  cd /path/to/agent-x && DATABASE_URL=... python scripts/checkpoint_cron.py >> checkpoint.log 2>&1
+```
+
+Pipe that line to somewhere outside this database — a git commit, a status page, a
+timestamping service. A root stored only in this database's own `checkpoints` table
+proves nothing, since that table could be rewritten too.
 
 ---
 

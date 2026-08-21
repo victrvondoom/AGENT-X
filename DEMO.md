@@ -114,16 +114,39 @@ Re-run the query. `FAIL — a row was edited`.
 
 ---
 
-## 2:50 — 3:00 · Close on the limitation, not the feature
+## 2:50 — 3:00 · Close on the limitation — and how it's closed
 
-> "One thing I'll say plainly: a certificate can't vouch for itself. Anyone can sign one
-> with their own key. So you pin our published key, or you check the chain binding — and
-> the verifier tells you which check it did and which it didn't. If it can't check
-> something, it says so."
+> "One thing I'll say plainly: a certificate carries the key its own signature is
+> checked against, so on its own terms it can never prove it isn't a forgery. We close
+> that with time, not more crypto — publish a Merkle root over every chain periodically.
+> A real certificate proves it was included in a checkpoint dated before any dispute. A
+> forgery made afterward can't be, without changing a root that's already public."
 
 **Last line:**
 
-> "Confidence-routed, human-gated, self-verified, and checkable without us. That's it."
+> "Confidence-routed, human-gated, self-verified, checkable without us — and the one gap
+> we couldn't close with cryptography, we closed with time. That's it."
+
+---
+
+## Optional extended beat (+40s) — the trust spine in 3D
+
+If you have room past 3:00, this is the strongest visual in the product and it is real
+data, not an animation. Open **`/spine`**.
+
+> "This is the actual chain, pulled live from the database — erasure and document
+> events interleaved, because they're one chain, not two ledgers."
+
+Click **Tamper a block**.
+
+> "Watch what happens to everything after it." *(cascades red, live; the Merkle root
+> above visibly moves)*
+
+Click **Crypto-shred**.
+
+> "And this is Phase 7 — erase a subject, and their block goes hollow. Contents gone,
+> links still hold. The chain still verifies. That's proof kept, personal data
+> destroyed — which is the whole thesis of this product, animated."
 
 ---
 

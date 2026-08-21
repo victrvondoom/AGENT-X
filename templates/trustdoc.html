@@ -119,7 +119,7 @@ a{color:var(--dim)}
   <!-- 5 ─ verify -->
   <div class="card hide" id="s5">
     <h2>5 · Verify it yourself</h2>
-    <div class="hint">Three independent ways to check this without trusting us.</div>
+    <div class="hint">Four independent ways to check this without trusting us.</div>
     <div id="verifyOut"></div>
   </div>
 </div>
@@ -222,6 +222,17 @@ async function finalize(){
   show(4); await verifyPanel();
 }
 
+async function checkInclusion(){
+  const out = $('inclOut');
+  out.innerHTML = 'publishing checkpoint...';
+  const cp = await (await fetch('/api/doc/checkpoint', {method:'POST'})).json();
+  const inc = await (await fetch(`/api/doc/jobs/${JOB}/inclusion?checkpoint_id=${cp.checkpoint_id}`)).json();
+  out.innerHTML = inc.ok
+    ? `<span class="pill ok">included</span> leaf ${inc.leaf_index}/${inc.leaf_count} in checkpoint
+       <span class="mono">${esc(cp.merkle_root.slice(0,16))}...</span> over ${cp.leaf_count} chains`
+    : `<span class="pill bad">not included</span> ${esc(inc.reason||'')}`;
+}
+
 async function verifyPanel(){
   const a = await (await fetch(`/api/doc/jobs/${JOB}/audit`)).json();
   const c = await (await fetch(`/api/doc/jobs/${JOB}/certificate`)).json().catch(()=>null);
@@ -248,7 +259,15 @@ async function verifyPanel(){
             not involved.</li>
         <li>Compare the public key in the certificate against the one published separately.
             A certificate cannot vouch for its own key.</li>
+        <li>Publish a <b>transparency checkpoint</b> and prove this job was included in it —
+            a certificate signed with the right key is still a forgery if it can't prove it
+            existed before the checkpoint was published. <a href="/spine" target="_blank">See
+            the whole chain in 3D</a>, live from this database.</li>
       </ol>
+      <div style="margin-top:.6rem">
+        <button onclick="checkInclusion()">Publish checkpoint &amp; prove inclusion</button>
+      </div>
+      <div id="inclOut" style="margin-top:.6rem;font-size:.8rem"></div>
       <textarea class="mono" readonly>${c ? esc(JSON.stringify(c, null, 2)) : 'certificate not issued yet'}</textarea>
     </div>`;
 }
