@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en" data-theme="night">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Trust Spine · Agent X</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE TRUST SPINE, IN 3D
+
+   Not decoration. The architecture makes three claims that are hard to believe
+   from prose and obvious from geometry:
+
+     1. TWO PIPELINES, ONE CHAIN   erasure and document blocks are visibly the
+                                   same chain, interleaved, not two ledgers.
+     2. TAMPER PROPAGATES          break one block and every block after it goes
+                                   red, live. That is what "hash-chained" means.
+     3. SHREDDED, STILL LINKED     a crypto-shredded block is hollow -- its
+                                   contents are gone -- yet its links still hold.
+                                   Proof kept, personal data destroyed.
+
+   The Merkle tree above the chain folds the leaves to a single root, and
+   tampering visibly moves it.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --void:#08080a; --panel:rgba(20,20,24,.55); --bone:#edeae2; --dim:#9a978f;
+  --hair:rgba(237,234,226,.11);
+  --erasure:#dce9ff; --document:#f2e4cc; --broken:#ff8f6b; --root:#ffffff;
+}
+:root[data-theme="day"]{
+  --void:#f5f3ee; --panel:rgba(255,255,255,.74); --bone:#1b1a17; --dim:#6d6a62;
+  --hair:rgba(27,26,23,.14);
+  --erasure:#4d6b8a; --document:#8a6f3e; --broken:#c0472a; --root:#2a2823;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--void);color:var(--bone);overflow:hidden;
+  font:15px/1.6 'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+canvas{position:fixed;inset:0;z-index:0;display:block}
+.serif{font-family:'Instrument Serif',Georgia,serif}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.panel{position:fixed;z-index:2;background:var(--panel);border:1px solid var(--hair);
+  border-radius:14px;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+#hud{top:1.1rem;left:1.1rem;padding:1rem 1.15rem;width:min(21rem,calc(100vw - 2.2rem))}
+#hud h1{margin:0;font:400 1.25rem/1.2 'Instrument Serif',Georgia,serif}
+#hud .sub{color:var(--dim);font-size:.76rem;margin-top:.35rem;line-height:1.55}
+.row{display:flex;gap:.45rem;margin-top:.8rem;flex-wrap:wrap}
+button{font:500 .78rem inherit;border:1px solid var(--hair);border-radius:9px;
+  background:rgba(0,0,0,.22);color:var(--bone);padding:.45rem .8rem;cursor:pointer;
+  transition:border-color .2s}
+button:hover{border-color:var(--dim)}
+button.warn{color:var(--broken);border-color:var(--broken)}
+#legend{bottom:1.1rem;left:1.1rem;padding:.75rem .9rem;font-size:.72rem;line-height:1.85}
+#legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:.5rem}
+#read{top:1.1rem;right:1.1rem;padding:.85rem 1rem;width:min(19rem,calc(100vw - 2.2rem));
+  font-size:.75rem;line-height:1.7}
+#read .t{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);
+  margin-bottom:.4rem}
+#read .l{display:flex;justify-content:space-between;gap:.8rem;padding:.12rem 0}
+#read .l span:last-child{color:var(--dim)}
+#read .bad{color:var(--broken);font-weight:600}
+#theme{top:1.1rem;left:50%;transform:translateX(-50%);width:32px;height:32px;
+  border-radius:999px;display:grid;place-items:center;padding:0}
+.link{position:fixed;z-index:2;bottom:1.1rem;right:1.1rem;font-size:.74rem;
+  color:var(--dim);text-decoration:none}
+@media (max-width:860px){#read{display:none}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud" class="panel">
+  <h1 class="serif">The Trust Spine</h1>
+  <div class="sub">Both pipelines write one hash chain. Break a link and watch what
+    happens to everything after it.</div>
+  <div class="row">
+    <button id="btnTamper" onclick="tamperOne()" class="warn">Tamper a block</button>
+    <button id="btnShred" onclick="shredOne()">Crypto-shred</button>
+    <button id="btnReset" onclick="rebuild()">Reset</button>
+  </div>
+</div>
+
+<div id="legend" class="panel">
+  <div><i style="background:var(--erasure)"></i>erasure pipeline</div>
+  <div><i style="background:var(--document)"></i>document pipeline</div>
+  <div><i style="background:var(--broken)"></i>hash no longer verifies</div>
+  <div><i style="border:1px solid var(--dim)"></i>shredded — hollow, still linked</div>
+</div>
+
+<div id="read" class="panel">
+  <div class="t">Chain state</div>
+  <div id="lines"></div>
+</div>
+
+<button id="theme" class="panel" onclick="toggleTheme()"><span id="ti">☾</span></button>
+<a class="link" href="/trustdoc">← back to the app</a>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const $ = id => document.getElementById(id);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+let THEME = localStorage.getItem('agentx.theme') === 'day' ? 'day' : 'night';
+function applyTheme(m){
+  document.documentElement.setAttribute('data-theme', m);
+  $('ti').textContent = m === 'day' ? '☀' : '☾';
+  THEME = m; localStorage.setItem('agentx.theme', m);
+  if (scene) scene.background = new THREE.Color(css('--void'));
+  recolour();
+}
+window.toggleTheme = () => applyTheme(THEME === 'day' ? 'night' : 'day');
+
+/* ── scene ─────────────────────────────────────────────────────────────── */
+const canvas = $('c');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(46, innerWidth/innerHeight, .1, 500);
+const root = new THREE.Group();
+scene.add(root);
+scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(4,7,6); scene.add(key);
+const rim = new THREE.DirectionalLight(0xffffff, .5);  rim.position.set(-6,-2,-4); scene.add(rim);
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+}, {passive:true});
+
+/* ── the chain ─────────────────────────────────────────────────────────────
+   Blocks alternate between pipelines deliberately: the interleaving is the
+   argument. If erasure and document events sat in separate rows the picture
+   would show two ledgers, which is exactly what this architecture is not. */
+const N = 14;
+let blocks = [], links = [], merkle = [], state = [];
+
+const boxGeo  = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+const edgeGeo = new THREE.EdgesGeometry(boxGeo, 1);
+const nodeGeo = new THREE.OctahedronGeometry(0.42, 0);
+
+function pipelineOf(i){ return (i % 3 === 0) ? 'erasure' : 'document'; }
+function colourOf(i){
+  // Guarded: recolour() can be reached (via theme toggle) before build() has ever
+  // run, since applyTheme() is called once at load before the scene exists. A
+  // reorder fixes the load-time case; this guard covers any other path in too.
+  const s = state[i];
+  if (!s) return new THREE.Color(css('--document'));
+  if (s.broken) return new THREE.Color(css('--broken'));
+  return new THREE.Color(css(s.pipeline === 'erasure' ? '--erasure' : '--document'));
+}
+
+function build(){
+  root.clear(); blocks = []; links = []; merkle = [];
+  state = Array.from({length:N}, (_, i) => ({
+    pipeline: pipelineOf(i), broken:false, shredded:false, seq:i,
+  }));
+
+  for (let i = 0; i < N; i++){
+    const x = (i - (N-1)/2) * 2.35;
+    const g = new THREE.Group();
+    g.position.set(x, 0, 0);
+
+    // Solid held translucent so the EDGE CAGE reads as the object -- a block is a
+    // container for a hash, not a lump of plastic.
+    const solid = new THREE.Mesh(boxGeo, new THREE.MeshPhysicalMaterial({
+      color: colourOf(i), transparent:true, opacity:.28,
+      roughness:.25, metalness:0, transmission:.55, thickness:.6,
+    }));
+    const cage = new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({
+      color: colourOf(i), transparent:true, opacity:.9,
+    }));
+    g.add(solid, cage);
+    root.add(g);
+    blocks.push({group:g, solid, cage, x});
+
+    if (i > 0){
+      const geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(x - 2.35 + .75, 0, 0), new THREE.Vector3(x - .75, 0, 0)]);
+      const ln = new THREE.Line(geo, new THREE.LineBasicMaterial({
+        color: colourOf(i), transparent:true, opacity:.75}));
+      root.add(ln); links.push(ln);
+    }
+  }
+
+  // Merkle tree folded above: each level halves until a single root.
+  let level = blocks.map((b, i) => ({x:b.x, y:2.6, i}));
+  let depth = 0;
+  while (level.length > 1){
+    depth++;
+    const next = [];
+    for (let i = 0; i < level.length; i += 2){
+      const a = level[i], b = level[i+1];
+      const x = b ? (a.x + b.x)/2 : a.x;          // odd node PROMOTED, not duplicated
+      const y = 2.6 + depth * 2.0;
+      const m = new THREE.Mesh(nodeGeo, new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color(css('--root')), roughness:.15, metalness:.1,
+        transparent:true, opacity:.55}));
+      m.position.set(x, y, 0);
+      root.add(m);
+      merkle.push({mesh:m, kids:[a.i, b ? b.i : a.i], depth});
+      for (const c of [a, b]) {
+        if (!c) continue;
+        const geo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(c.x, c.y, 0), new THREE.Vector3(x, y, 0)]);
+        const ln = new THREE.Line(geo, new THREE.LineBasicMaterial({
+          color:new THREE.Color(css('--dim')), transparent:true, opacity:.28}));
+        root.add(ln); merkle[merkle.length-1].edges = merkle[merkle.length-1].edges || [];
+        merkle[merkle.length-1].edges.push(ln);
+      }
+      next.push({x, y, i: a.i});
+    }
+    level = next;
+  }
+
+  fit(); recolour(); readout();
+}
+
+function fit(){
+  const box = new THREE.Box3().setFromObject(root);
+  const size = box.getSize(new THREE.Vector3());
+  const c = box.getCenter(new THREE.Vector3());
+  root.position.sub(c);
+  camera.position.set(0, 1.5, Math.max(size.x, size.y) * 0.95);
+  camera.lookAt(0, 0, 0);
+}
+
+/* Propagation is the whole point: a break at i invalidates every block AFTER i,
+   because each block's hash includes the previous one. */
+function propagate(){
+  let broke = false;
+  for (let i = 0; i < N; i++){
+    if (state[i].tampered) broke = true;
+    state[i].broken = broke;
+  }
+}
+
+function recolour(){
+  if (!blocks.length) return;   // called by applyTheme() before build() on first load
+  for (let i = 0; i < N; i++){
+    const c = colourOf(i), b = blocks[i];
+    if (!b) continue;
+    b.solid.material.color.copy(c);
+    b.cage.material.color.copy(c);
+    // a shredded block is HOLLOW: contents gone, cage intact
+    b.solid.material.opacity = state[i].shredded ? 0.0 : .28;
+    b.cage.material.opacity  = state[i].shredded ? .55 : .9;
+    if (i > 0 && links[i-1]) links[i-1].material.color.copy(c);
+  }
+  const anyBroken = state.some(s => s.broken);
+  merkle.forEach(m => {
+    const bad = m.kids.some(k => state[k] && state[k].broken);
+    m.mesh.material.color.set(bad ? css('--broken') : css('--root'));
+    m.mesh.material.opacity = bad ? .95 : .55;
+  });
+  scene.background = new THREE.Color(css('--void'));
+  return anyBroken;
+}
+
+function readout(){
+  const broken = state.filter(s => s.broken).length;
+  const shred  = state.filter(s => s.shredded).length;
+  const first  = state.findIndex(s => s.tampered);
+  $('lines').innerHTML =
+    `<div class="l"><span>blocks</span><span>${N}</span></div>` +
+    `<div class="l"><span>erasure / document</span><span>${state.filter(s=>s.pipeline==='erasure').length} / ${state.filter(s=>s.pipeline==='document').length}</span></div>` +
+    `<div class="l"><span>crypto-shredded</span><span>${shred}</span></div>` +
+    (broken
+      ? `<div class="l"><span class="bad">chain</span><span class="bad">BROKEN at ${first}</span></div>` +
+        `<div class="l"><span class="bad">blocks invalidated</span><span class="bad">${broken}</span></div>` +
+        `<div class="l"><span>merkle root</span><span class="bad">moved</span></div>`
+      : `<div class="l"><span>chain</span><span>intact</span></div>` +
+        `<div class="l"><span>merkle root</span><span>stable</span></div>`) +
+    (shred && !broken
+      ? `<div class="l" style="margin-top:.4rem"><span>note</span><span>shredded blocks still verify</span></div>`
+      : '');
+}
+
+window.tamperOne = () => {
+  const candidates = state.map((s,i)=>i).filter(i => !state[i].tampered && i > 1 && i < N-2);
+  if (!candidates.length) return;
+  const i = candidates[Math.floor(candidates.length/2)];
+  state[i].tampered = true;
+  blocks[i].group.userData.shake = performance.now();
+  propagate(); recolour(); readout();
+};
+
+window.shredOne = () => {
+  const i = state.findIndex(s => !s.shredded && !s.tampered);
+  if (i < 0) return;
+  state[i].shredded = true;
+  blocks[i].group.userData.shred = performance.now();
+  recolour(); readout();                    // note: NOT propagate -- shredding is legal
+};
+
+window.rebuild = () => build();
+
+/* ── drag to orbit ─────────────────────────────────────────────────────── */
+const drag = {on:false, x:0, y:0};
+canvas.addEventListener('pointerdown', e => { drag.on = true; drag.x = e.clientX; drag.y = e.clientY; });
+addEventListener('pointermove', e => {
+  if (!drag.on) return;
+  root.rotation.y += (e.clientX - drag.x) * .005;
+  root.rotation.x = Math.max(-.9, Math.min(.9, root.rotation.x + (e.clientY - drag.y) * .004));
+  drag.x = e.clientX; drag.y = e.clientY;
+});
+for (const ev of ['pointerup','pointercancel','pointerleave'])
+  addEventListener(ev, () => drag.on = false);
+
+const clock = new THREE.Clock();
+function frame(){
+  const t = performance.now(), dt = Math.min(clock.getDelta(), .05);
+  root.rotation.y += dt * .05;
+  for (let i = 0; i < N; i++){
+    const b = blocks[i]; if (!b) continue;
+    b.group.rotation.y += dt * (state[i].broken ? .9 : .18);
+    const u = b.group.userData;
+    if (u.shake){                              // a broken block shudders, then settles
+      const k = (t - u.shake) / 700;
+      b.group.position.y = k < 1 ? Math.sin(k * Math.PI * 6) * .18 : 0;
+      if (k >= 1) u.shake = 0;
+    }
+    if (u.shred){                              // shredding: contents collapse inward
+      const k = Math.min(1, (t - u.shred) / 800);
+      b.solid.scale.setScalar(1 - k * .9);
+      if (k >= 1) u.shred = 0;
+    }
+  }
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+build();
+applyTheme(THEME);
+frame();
+</script>
+</body>
+</html>

@@ -116,6 +116,13 @@ def trustdoc_ui():
     return _serve("trustdoc.html")
 
 
+@app.get("/spine", response_class=HTMLResponse)
+def spine():
+    """The trust spine in 3D: two pipelines on one chain, tamper propagation, and
+    a crypto-shredded block that is hollow yet still linked."""
+    return _serve("chain3d.html")
+
+
 @app.get("/verify-offline", response_class=HTMLResponse)
 def verify_offline():
     """Served for convenience, but the point is to SAVE it and open it from disk.
