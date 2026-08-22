@@ -120,8 +120,11 @@
     <nav class="flex flex-col gap-1" id="nav">
       <button data-view="triage" title="Triage" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/></svg><span class="hidden md:inline">Triage</span></button>
+      <button data-view="cases" title="Problem Cases" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="hidden md:inline">Cases</span></button>
       <button data-view="systems" title="Subjects" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="hidden md:inline">Subjects</span></button>
+
       <button data-view="upload" title="Upload" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg><span class="hidden md:inline">Upload</span></button>
       <button data-view="graph" title="Graph" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
@@ -199,13 +202,130 @@
           </ol>
         </div>
         <div id="log" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation" class="flex min-h-0 flex-1 flex-col space-y-3 overflow-y-auto rounded-xl border border-zinc-300 bg-white p-4 dark:border-zinc-800 dark:bg-[#1a1a1f]"></div>
-        <div class="mt-3 flex shrink-0 items-end gap-2 rounded-2xl border border-zinc-300 bg-white p-1.5 pl-3.5 shadow-sm transition focus-within:border-violet-500 focus-within:shadow-md focus-within:shadow-violet-500/10 dark:border-zinc-800 dark:bg-[#1a1a1f]">
-          <textarea id="q" rows="1" placeholder="Ask anything about your subjects…" class="max-h-40 flex-1 resize-none bg-transparent py-2 text-sm outline-none placeholder:text-zinc-400 dark:placeholder:text-zinc-500"></textarea>
-          <button id="bAsk" disabled aria-label="Ask" class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-zinc-950 text-white transition hover:bg-zinc-800 disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+        
+        <!-- Progressive Disclosure Agent & Capability Selector -->
+        <div class="relative mt-3">
+          <!-- Level 1: Minimalist Floating Trigger Toolbar -->
+          <div class="mb-2 flex items-center justify-between px-0.5 text-xs">
+            <div class="flex items-center gap-2">
+              <!-- Level 1 Trigger: Category -->
+              <button id="catPopoverBtn" aria-haspopup="true" aria-expanded="false" class="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 shadow-sm transition hover:border-violet-500 dark:border-zinc-800 dark:bg-[#1a1a1f] dark:text-zinc-300">
+                <span id="catPopoverLabel">General Tasks</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+
+              <!-- Level 2 Trigger: Capability Goal -->
+              <button id="capPopoverBtn" aria-haspopup="true" aria-expanded="false" class="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 shadow-sm transition hover:border-violet-500 dark:border-zinc-800 dark:bg-[#1a1a1f] dark:text-zinc-300">
+                <span id="capPopoverLabel">Goal: Auto-Detect</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+            </div>
+
+            <!-- Level 3/4 Trigger: Advanced Response Options -->
+            <button id="configPopoverBtn" aria-haspopup="true" aria-expanded="false" class="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-500 shadow-sm transition hover:border-violet-500 hover:text-zinc-700 dark:border-zinc-800 dark:bg-[#1a1a1f] dark:text-zinc-400">
+              <span id="configPopoverLabel">Options</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+          </div>
+
+          <!-- LEVEL 2 POPUP: Category Selector Panel -->
+          <div id="catPopoverPanel" class="hidden absolute left-0 bottom-full mb-2 z-50 w-72 max-w-[90vw] rounded-xl border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-[#1a1a1f]">
+            <div class="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Select Category</div>
+            <div class="space-y-1">
+              <button id="catOptGen" class="w-full flex items-center justify-between rounded-lg p-2 text-left text-xs font-medium text-zinc-800 hover:bg-violet-500/10 hover:text-violet-600 dark:text-zinc-200 transition">
+                <div>
+                  <div class="font-semibold">General Tasks</div>
+                  <div class="text-[10px] text-zinc-400 font-normal">Research, Create, Analyze, Build, Decide, Learn</div>
+                </div>
+                <span id="catGenCheck" class="text-violet-600 dark:text-violet-400 font-bold">✓</span>
+              </button>
+              <button id="catOptBook" class="w-full flex items-center justify-between rounded-lg p-2 text-left text-xs font-medium text-zinc-800 hover:bg-amber-500/10 hover:text-amber-600 dark:text-zinc-200 transition">
+                <div>
+                  <div class="font-semibold">Online Booking & App Issues</div>
+                  <div class="text-[10px] text-zinc-400 font-normal">Flight cancellations, hidden fees, dispute letters</div>
+                </div>
+                <span id="catBookCheck" class="hidden text-amber-600 dark:text-amber-400 font-bold">✓</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- LEVEL 3 POPUP: Goal Capability Selector Panel -->
+          <div id="capPopoverPanel" class="hidden absolute left-0 sm:left-28 bottom-full mb-2 z-50 w-64 max-w-[90vw] rounded-xl border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-[#1a1a1f]">
+            <div class="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Select Goal</div>
+            
+            <div id="genCapList" class="space-y-1">
+              <button data-cap="auto" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs font-medium text-violet-600 bg-violet-500/10 dark:text-violet-300">Auto-Detect</button>
+              <button data-cap="research" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Research</button>
+              <button data-cap="create" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Create</button>
+              <button data-cap="analyze" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Analyze</button>
+              <button data-cap="build" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Build</button>
+              <button data-cap="decide" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Decide</button>
+              <button data-cap="learn" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Learn</button>
+            </div>
+
+            <div id="bookCapList" class="hidden space-y-1">
+              <button data-cap="verify_booking" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs font-medium text-amber-600 bg-amber-500/10 dark:text-amber-300">Verify Booking</button>
+              <button data-cap="hidden_fees" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Hidden Fees</button>
+              <button data-cap="refund_policy" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Refund Policy</button>
+              <button data-cap="report_issue" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Report Issue</button>
+              <button data-cap="dispute_letter" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Dispute Letter</button>
+            </div>
+          </div>
+
+          <!-- LEVEL 4 POPUP: Style & Format Options Panel -->
+          <div id="configPopoverPanel" class="hidden absolute right-0 bottom-full mb-2 z-50 w-64 max-w-[90vw] rounded-xl border border-zinc-200 bg-white p-3 shadow-xl dark:border-zinc-800 dark:bg-[#1a1a1f]">
+
+            <div class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Response Configuration</div>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400 mb-1">Assistance Style</label>
+                <select id="styleSel" class="w-full rounded-lg border border-zinc-200 bg-transparent p-1.5 text-xs outline-none dark:border-zinc-800 dark:bg-[#232329]">
+                  <option value="">Default</option>
+                  <option value="quickly">Quickly</option>
+                  <option value="deeply">Deeply</option>
+                  <option value="step-by-step">Step-by-step</option>
+                  <option value="critically">Critically</option>
+                  <option value="simply">Simply</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400 mb-1">Output Format</label>
+                <select id="formatSel" class="w-full rounded-lg border border-zinc-200 bg-transparent p-1.5 text-xs outline-none dark:border-zinc-800 dark:bg-[#232329]">
+                  <option value="">Standard</option>
+                  <option value="summary">Summary</option>
+                  <option value="table">Table</option>
+                  <option value="report">Report</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Text Prompt Input -->
+          <div class="flex shrink-0 items-end gap-2 rounded-2xl border border-zinc-300 bg-white p-2 pl-4 shadow-sm transition focus-within:border-violet-500 dark:border-zinc-800 dark:bg-[#1a1a1f]">
+            <textarea id="q" rows="1" placeholder="Describe what you want to accomplish…" class="max-h-36 flex-1 resize-none bg-transparent py-1.5 text-sm outline-none placeholder:text-zinc-400 dark:placeholder:text-zinc-500"></textarea>
+            <button id="bAsk" disabled aria-label="Ask" class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-zinc-950 text-white transition hover:bg-zinc-800 disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+          </div>
+        </div>
+
+
+      </section>
+
+      <section data-view="cases" class="hidden min-h-0 flex-1 overflow-y-auto py-8">
+        <div class="flex items-end justify-between">
+          <div>
+            <h2 class="serif text-2xl tracking-tight">Problem Cases</h2>
+            <p class="mt-1 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">Persistent Problem Cases &amp; Case Graphs recorded in CockroachDB memory. Track disputes, audits, and real-world consumer resolutions.</p>
+          </div>
+          <button id="refreshCasesBtn" class="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium transition hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-900">Refresh Cases</button>
+        </div>
+        <div id="casesList" class="mt-5 space-y-3">
+          <div class="text-xs text-zinc-400">Loading cases...</div>
         </div>
       </section>
 
       <section data-view="systems" class="hidden min-h-0 flex-1 overflow-y-auto py-8">
+
         <div class="flex flex-col items-start gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div><h2 class="serif text-2xl tracking-tight">Subjects</h2>
           <p class="mt-1 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">Every subject in this workspace's memory. Forget &amp; Prove one and it's verifiably erased — documents, graph nodes, edges, and its encryption key crypto-shredded.</p></div>
@@ -447,6 +567,7 @@
    const _sec=document.querySelector('section[data-view="'+v+'"]');  // gentle view-enter fade+rise (skip graph — never transform the vis-network canvas)
    if(_sec&&v!=='graph'){_sec.classList.remove('view-enter');void _sec.offsetWidth;_sec.classList.add('view-enter');}
    document.querySelectorAll('.nav').forEach(b=>{b.className='nav flex items-center justify-center md:justify-start gap-2.5 rounded-md px-2 md:px-2.5 py-2 text-sm '+(b.dataset.view===v?navActive:navIdle);});
+   if(v==='cases')loadCases();
    if(v==='systems')loadSystems();
    if(v==='graph')loadGraph();
    if(v==='curation')loadCuration();
@@ -454,6 +575,33 @@
  }
  document.querySelectorAll('button.nav').forEach(b=>b.onclick=()=>show(b.dataset.view));
  show('triage');
+
+ async function loadCases(){
+   const el = $('casesList');
+   if(!el) return;
+   el.innerHTML = '<div class="text-xs text-zinc-400">Loading cases...</div>';
+   try {
+     const r = await fetch('/api/cases?workspace='+encodeURIComponent(activeWs));
+     if(r.ok){
+       const j = await r.json();
+       const cases = j.cases || [];
+       if(!cases.length){
+         el.innerHTML = '<div class="rounded-xl border border-zinc-200 bg-zinc-50/60 p-6 text-center dark:border-zinc-800 dark:bg-[#1a1a1f]"><p class="text-sm font-medium text-zinc-600 dark:text-zinc-400">No active cases recorded yet.</p><p class="mt-1 text-xs text-zinc-400">Ask a booking or consumer question in Chat to automatically record a case in CockroachDB memory.</p></div>';
+         return;
+       }
+       el.innerHTML = cases.map(c => 
+         '<div class="rounded-xl border border-zinc-300 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-[#1a1a1f]">'+
+         '<div class="flex items-center justify-between"><span class="mono text-xs font-bold text-violet-600 dark:text-violet-400">'+esc(c.case_id)+'</span><span class="rounded bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300 uppercase">'+esc(c.domain)+'</span></div>'+
+         '<p class="mt-2 text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">'+esc(c.description)+'</p>'+
+         '</div>'
+       ).join('');
+     }
+   } catch(e) {
+     el.innerHTML = '<div class="text-xs text-red-500">Failed to load cases.</div>';
+   }
+ }
+ {const rBtn = $('refreshCasesBtn'); if(rBtn) rBtn.onclick = loadCases;}
+
 
  // First-run guided-demo card (Triage): shows once on the default workspace until dismissed.
  function demoCardUpd(){const dc=$('demoCard');if(!dc)return;const shouldShow=localStorage.getItem('agentx.demoCard')!=='done'&&activeWs==='default';dc.classList.toggle('hidden',!shouldShow);}
@@ -570,6 +718,134 @@
  function closeSource(){const p=$('srcPeek');if(p)p.classList.add('hidden');}
  {const _bg=$('srcPeekBg');if(_bg)_bg.onclick=closeSource;}
  const THINKING='<span class="thsh">thinking...</span>';
+  let activeCapability = 'auto';
+  let activeCategoryMode = 'general';
+
+  // Progressive Disclosure Popovers
+  const catPopoverBtn = $('catPopoverBtn');
+  const catPopoverPanel = $('catPopoverPanel');
+  const capPopoverBtn = $('capPopoverBtn');
+  const capPopoverPanel = $('capPopoverPanel');
+  const configPopoverBtn = $('configPopoverBtn');
+  const configPopoverPanel = $('configPopoverPanel');
+
+  function closeAllPopovers(){
+    if(catPopoverPanel) catPopoverPanel.classList.add('hidden');
+    if(capPopoverPanel) capPopoverPanel.classList.add('hidden');
+    if(configPopoverPanel) configPopoverPanel.classList.add('hidden');
+    if(catPopoverBtn) catPopoverBtn.setAttribute('aria-expanded', 'false');
+    if(capPopoverBtn) capPopoverBtn.setAttribute('aria-expanded', 'false');
+    if(configPopoverBtn) configPopoverBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  if(catPopoverBtn){
+    catPopoverBtn.onclick = (e) => {
+      e.stopPropagation();
+      const open = !catPopoverPanel.classList.contains('hidden');
+      closeAllPopovers();
+      if(!open){ catPopoverPanel.classList.remove('hidden'); catPopoverBtn.setAttribute('aria-expanded', 'true'); }
+    };
+  }
+  if(capPopoverBtn){
+    capPopoverBtn.onclick = (e) => {
+      e.stopPropagation();
+      const open = !capPopoverPanel.classList.contains('hidden');
+      closeAllPopovers();
+      if(!open){ capPopoverPanel.classList.remove('hidden'); capPopoverBtn.setAttribute('aria-expanded', 'true'); }
+    };
+  }
+  if(configPopoverBtn){
+    configPopoverBtn.onclick = (e) => {
+      e.stopPropagation();
+      const open = !configPopoverPanel.classList.contains('hidden');
+      closeAllPopovers();
+      if(!open){ configPopoverPanel.classList.remove('hidden'); configPopoverBtn.setAttribute('aria-expanded', 'true'); }
+    };
+  }
+  document.addEventListener('click', (e) => {
+    if(!e.target.closest('#catPopoverPanel') && !e.target.closest('#capPopoverPanel') && !e.target.closest('#configPopoverPanel')){
+      closeAllPopovers();
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape') closeAllPopovers();
+  });
+
+
+  // Category Selection
+  const catOptGen = $('catOptGen');
+  const catOptBook = $('catOptBook');
+  const genCapList = $('genCapList');
+  const bookCapList = $('bookCapList');
+
+  function switchCategoryMode(mode){
+    activeCategoryMode = mode;
+    if(mode === 'general'){
+      if($('catPopoverLabel')) $('catPopoverLabel').textContent = 'General Tasks';
+      if(genCapList) genCapList.classList.remove('hidden');
+      if(bookCapList) bookCapList.classList.add('hidden');
+      if($('catGenCheck')) $('catGenCheck').classList.remove('hidden');
+      if($('catBookCheck')) $('catBookCheck').classList.add('hidden');
+      setCapability('auto', 'Auto-Detect');
+    } else {
+      if($('catPopoverLabel')) $('catPopoverLabel').textContent = 'Booking & App Issues';
+      if(genCapList) genCapList.classList.add('hidden');
+      if(bookCapList) bookCapList.classList.remove('hidden');
+      if($('catGenCheck')) $('catGenCheck').classList.add('hidden');
+      if($('catBookCheck')) $('catBookCheck').classList.remove('hidden');
+      setCapability('verify_booking', 'Verify Booking');
+    }
+  }
+
+  if(catOptGen) catOptGen.onclick = () => { switchCategoryMode('general'); closeAllPopovers(); };
+  if(catOptBook) catOptBook.onclick = () => { switchCategoryMode('booking'); closeAllPopovers(); };
+
+  // Goal Capability Selection
+  function setCapability(capId, capLabel){
+    activeCapability = capId;
+    if($('capPopoverLabel')) $('capPopoverLabel').textContent = 'Goal: ' + capLabel;
+    document.querySelectorAll('.cap-opt-btn').forEach(b => {
+      if(b.getAttribute('data-cap') === capId){
+        b.className = 'cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs font-medium ' + (activeCategoryMode === 'booking' ? 'text-amber-600 bg-amber-500/10 dark:text-amber-300' : 'text-violet-600 bg-violet-500/10 dark:text-violet-300');
+      } else {
+        b.className = 'cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800';
+      }
+    });
+  }
+
+  document.querySelectorAll('.cap-opt-btn').forEach(btn => {
+    btn.onclick = () => {
+      const capId = btn.getAttribute('data-cap') || 'auto';
+      const capLabel = btn.textContent.trim();
+      setCapability(capId, capLabel);
+      closeAllPopovers();
+    };
+  });
+
+  // Config Popover Label Update
+  function updateConfigLabel(){
+    const s = $('styleSel') ? $('styleSel').value : '';
+    const f = $('formatSel') ? $('formatSel').value : '';
+    if(s || f){
+      if($('configPopoverLabel')) $('configPopoverLabel').textContent = 'Options (Configured)';
+    } else {
+      if($('configPopoverLabel')) $('configPopoverLabel').textContent = 'Options';
+    }
+  }
+  if($('styleSel')) $('styleSel').onchange = updateConfigLabel;
+  if($('formatSel')) $('formatSel').onchange = updateConfigLabel;
+
+ // Capability chip click handler
+ document.querySelectorAll('.cap-btn').forEach(btn => {
+   btn.onclick = () => {
+     document.querySelectorAll('.cap-btn').forEach(b => {
+       b.className = 'cap-btn rounded-full border border-zinc-300 bg-white px-2.5 py-0.5 text-zinc-600 dark:border-zinc-800 dark:bg-[#1a1a1f] dark:text-zinc-400 transition hover:border-violet-500 hover:text-violet-600 dark:hover:text-violet-300';
+     });
+     btn.className = 'cap-btn rounded-full border border-violet-500/50 bg-violet-500/10 px-2.5 py-0.5 font-medium text-violet-700 dark:text-violet-300 transition';
+     activeCapability = btn.getAttribute('data-cap') || 'auto';
+   };
+ });
+
  async function ask(q){q=(q||$('q').value).trim();if(!q||!ready)return;
    const t=ensureThread(q);const hist=t.msgs.slice(-6);
    t.msgs.push({role:'user',content:q});saveThreads();renderBar();
@@ -582,11 +858,75 @@
  // duplicated turns). Reused by ask() and by the Retry button.
  async function answerInto(q,hist,c,t){
    c.innerHTML=THINKING;$('bAsk').disabled=true;
-   // Agent X answers in a single POST /api/ask {query,history,workspace} -> {answer}. No streaming,
-   // no citations. The typing indicator shows until the full answer returns; then we render it.
+   const styleVal = $('styleSel') ? $('styleSel').value : '';
+   const formatVal = $('formatSel') ? $('formatSel').value : '';
+   const capVal = activeCapability === 'auto' ? null : activeCapability;
+
+   // Check if high-novelty booking inspector is triggered
+   const isBookingQuery = activeCategoryMode === 'booking' || ['verify_booking','hidden_fees','refund_policy','report_issue','dispute_letter'].includes(activeCapability) || /booking|pnr|flight|hotel|ticket|charge|refund|surcharge|reservation/i.test(q);
+
+   if(isBookingQuery && activeCategoryMode === 'booking'){
+     try {
+       const bkRes = await fetch('/api/inspect_booking', {
+         method: 'POST',
+         headers: {'Content-Type':'application/json'},
+         body: JSON.stringify({text: q, generate_dispute: true, workspace: activeWs})
+       });
+       if(bkRes.ok){
+         const bkData = await bkRes.json();
+         const audit = bkData.audit || {};
+         let html = '<div class="rounded-xl border border-zinc-200 bg-zinc-50/50 p-4 dark:border-zinc-800 dark:bg-[#1a1a1f] mb-3">'+
+                    '<div class="flex items-center justify-between"><span class="text-xs font-bold uppercase tracking-wider text-zinc-800 dark:text-zinc-200">Smart Booking Audit Card</span><span class="text-[11px] mono text-zinc-400">Ref: '+esc(audit.booking_ref||'N/A')+'</span></div>'+
+                    '<h4 class="text-sm font-semibold mt-1">'+esc(audit.merchant_category||'Online Service Booking')+'</h4>'+
+                    '<ul class="mt-2 space-y-1 text-xs text-zinc-600 dark:text-zinc-300">'+
+                    (audit.anomalies_detected||[]).map(a => '<li>• '+esc(a)+'</li>').join('') +
+                    '</ul>'+
+                    '<div class="mt-3 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">'+(audit.consumer_rights_advisory||[]).map(r => '• '+esc(r)).join('<br>')+'</div>'+
+                    '</div>';
+         
+         if(bkData.dispute_letter){
+           html += '<div class="mt-2 rounded-xl border border-zinc-300 bg-white p-3 text-xs dark:border-zinc-800 dark:bg-[#1a1a1f]"><div class="font-bold mb-1 text-zinc-800 dark:text-zinc-200">Generated Dispute Letter:</div><pre class="whitespace-pre-wrap font-mono text-[11px] text-zinc-700 dark:text-zinc-300">'+esc(bkData.dispute_letter)+'</pre></div>';
+         }
+         c.innerHTML = html;
+         addCopy(c, bkData.dispute_letter || html);
+         t.msgs.push({role:'assistant',content:'Booking issue inspected successfully.',sources:[]});
+         saveThreads();
+         try {
+           fetch('/api/cases', {
+             method: 'POST',
+             headers: {'Content-Type':'application/json'},
+             body: JSON.stringify({
+               workspace: activeWs,
+               title: audit.merchant_category || 'Booking Issue',
+               domain: 'travel',
+               problem_type: 'booking_issue',
+               user_claim: q,
+               evidence_text: bkData.dispute_letter || q
+             })
+           });
+         } catch(e){}
+         return;
+       }
+     } catch(err) {
+       console.warn('Booking inspector fallback to standard QA:', err);
+     }
+   }
+
    const ctrl=new AbortController();const to=setTimeout(()=>ctrl.abort(),60000);
    try{
-     const r=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,history:hist,workspace:activeWs}),signal:ctrl.signal});
+     const r=await fetch('/api/ask',{
+       method:'POST',
+       headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({
+         query:q,
+         history:hist,
+         workspace:activeWs,
+         capability:capVal,
+         assist_style:styleVal || null,
+         output_format:formatVal || null
+       }),
+       signal:ctrl.signal
+     });
      if(!r.ok)throw new Error('http '+r.status);
      const j=await r.json();clearTimeout(to);
      const answer=String(j.answer||'').trim();
@@ -889,11 +1229,46 @@
  }
  $('fgModal').addEventListener('click',e=>{if(e.target===$('fgModal'))fgClose();});
 
+ function renderSvgFallbackGraph(nodes, edges) {
+    const box = $('graphbox');
+    if (!box) return;
+    if (!nodes || !nodes.length) {
+      box.innerHTML = '<div class="flex h-full w-full items-center justify-center p-8 text-center text-sm text-zinc-400">No nodes in knowledge graph yet. Ingest a record to generate graph entities.</div>';
+      return;
+    }
+    const width = box.clientWidth || 600;
+    const height = box.clientHeight || 400;
+    const cx = width / 2;
+    const cy = height / 2;
+    const radius = Math.min(width, height) * 0.35;
+    let svg = `<svg width="100%" height="100%" viewBox="0 0 ${width} ${height}" class="w-full h-full">`;
+    const coords = {};
+    nodes.forEach((n, idx) => {
+      const angle = (idx / nodes.length) * 2 * Math.PI;
+      coords[n.id] = { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) };
+    });
+    (edges || []).forEach(e => {
+      const c1 = coords[e.source]; const c2 = coords[e.target];
+      if (c1 && c2) svg += `<line x1="${c1.x}" y1="${c1.y}" x2="${c2.x}" y2="${c2.y}" stroke="rgba(158,158,166,0.3)" stroke-width="1.5"/>`;
+    });
+    nodes.forEach(n => {
+      const c = coords[n.id];
+      if (c) {
+        const color = n.deleted ? '#9e9ea6' : '#8b5cf6';
+        svg += `<circle cx="${c.x}" cy="${c.y}" r="8" fill="${color}"/>`;
+        svg += `<text x="${c.x}" y="${c.y + 18}" font-size="11" fill="currentColor" text-anchor="middle" class="fill-zinc-700 dark:fill-zinc-300 font-medium">${esc(n.label || n.name)}</text>`;
+      }
+    });
+    svg += `</svg>`;
+    box.innerHTML = svg;
+    if ($('gmeta')) $('gmeta').textContent = nodes.length + ' entities';
+  }
+
  // graph — Obsidian-style: degree-sized nodes, hover a node to highlight its neighbours and dim the rest,
  // organic force-directed layout, relationship labels that reveal only on focus (clean by default).
  let gnet=null,gdata=null,gpinned=null,gpdepth=1,gRaf=null,gGen=0;
  const gReduced=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches);
- function loadVis(cb){if(window.vis)return cb();const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js';s.onload=cb;s.onerror=()=>{$('gmeta').textContent='could not load the graph library';};document.head.appendChild(s);}
+ function loadVis(cb){if(window.vis)return cb();let done=false;const to=setTimeout(()=>{if(!done){done=true;console.warn('vis CDN timeout, using fallback renderer');cb();}},2500);const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js';s.onload=()=>{if(!done){done=true;clearTimeout(to);cb();}};s.onerror=()=>{if(!done){done=true;clearTimeout(to);cb();}};document.head.appendChild(s);}
  function gpal(){const dark=document.documentElement.classList.contains('dark');return dark?{
      ent:{background:'#a8a8b0',border:'#74747c'},typ:{background:'#b9b9c0',border:'#b9b9c0'},dem:{background:'#f59e0b',border:'#d97706'},ghost:{background:'rgba(158,158,166,.22)',border:'rgba(158,158,166,.30)'},
      dimNode:{background:'rgba(100,116,139,.16)',border:'rgba(100,116,139,.22)'},
@@ -988,6 +1363,10 @@
      const ke=(d.edges||[]).filter(e=>ids.has(e.source)&&ids.has(e.target)).map((e,i)=>({source:e.source,target:e.target,label:e.rel,_id:i}));
      const deg={};ke.forEach(e=>{deg[e.source]=(deg[e.source]||0)+1;deg[e.target]=(deg[e.target]||0)+1;});
      const byId={};kn.forEach(n=>byId[n.id]=n);
+     if(!window.vis){
+       renderSvgFallbackGraph(kn, ke);
+       return;
+     }
      const nodesDS=new vis.DataSet(kn.map(n=>({id:n.id,label:n.label,shape:'dot',value:Math.sqrt(deg[n.id]||0)+1.5,color:gbase(n,p),
        font:{color:p.font,strokeWidth:4,strokeColor:p.halo}})));
      const edgesDS=new vis.DataSet(ke.map(e=>({id:e._id,from:e.source,to:e.target,label:'',color:{color:p.edge,opacity:1},width:1.1,font:{color:p.efont,strokeWidth:3,strokeColor:p.halo}})));
@@ -1020,8 +1399,11 @@
      }
      window.gFocus=gFocus;window.gReset=gReset;window.gFocusHops=gFocusHops;
      gMeta(null);
-   }catch(e){$('gmeta').textContent='failed to load graph';}
- });}
+    }catch(e){
+      console.warn('Graph load error:', e);
+      renderSvgFallbackGraph([], []);
+    }
+  });}
  $('greload').onclick=loadGraph;
  // S2: search a node by label (hyphen/space-normalized), Enter → focus + halo; Esc/clear → reset.
  function gSearch(){if(!gnet||!gdata)return;var raw=($('gsearch').value||'').trim();
@@ -1040,8 +1422,27 @@
  drop.addEventListener('dragleave',()=>drop.classList.remove('drop-hot'));
  drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('drop-hot');readFiles(e.dataTransfer.files);});
  function readFiles(files){if(!files||!files.length)return;const f=files[0];pendingFile=f;const rd=new FileReader();
-   rd.onload=()=>{pending=rd.result;if(!$('upsys').value)$('upsys').value=f.name.replace(/\.[^.]+$/,'');$('upmsg').innerHTML='<span class="text-zinc-500">loaded <b>'+esc(f.name)+'</b> ('+f.size+' bytes) — name the subject and click Ingest.</span>';};
-   rd.readAsText(f);}
+    rd.onload=()=>{
+      pending=rd.result;
+      if(!$('upsys').value)$('upsys').value=f.name.replace(/\.[^.]+$/,'');
+      const ext=(f.name.split('.').pop()||'').toLowerCase();
+      let pillsHtml='';
+      if(['pdf','jpg','png','txt','html','eml','csv'].includes(ext)||/receipt|booking|invoice|flight|hotel|pnr|order/i.test(f.name)){
+        pillsHtml='<div class="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs"><span class="font-medium text-zinc-500 dark:text-zinc-400">Suggested actions:</span>'+
+          '<button onclick="switchCategoryMode(\'booking\');show(\'triage\');" class="rounded border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 font-medium text-violet-700 transition hover:bg-violet-500/20 dark:text-violet-300">Audit Receipt &amp; Surcharges</button>'+
+          '<button onclick="switchCategoryMode(\'booking\');show(\'triage\');" class="rounded border border-amber-500/30 bg-amber-50/50 px-2 py-0.5 font-medium text-amber-700 transition hover:bg-amber-100 dark:text-amber-300">Generate Dispute Letter</button>'+
+          '</div>';
+      }else if(['py','js','ts','json','cpp','java','html','css'].includes(ext)){
+        pillsHtml='<div class="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs"><span class="font-medium text-zinc-500 dark:text-zinc-400">Suggested actions:</span>'+
+          '<button onclick="switchCategoryMode(\'general\');show(\'triage\');" class="rounded border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 font-medium text-violet-700 transition hover:bg-violet-500/20 dark:text-violet-300">Audit Code Bugs</button>'+
+          '<button onclick="switchCategoryMode(\'general\');show(\'triage\');" class="rounded border border-emerald-500/30 bg-emerald-50/50 px-2 py-0.5 font-medium text-emerald-700 transition hover:bg-emerald-100 dark:text-emerald-300">Extract Specifications</button>'+
+          '</div>';
+      }
+
+      $('upmsg').innerHTML='<span class="text-zinc-500">loaded <b>'+esc(f.name)+'</b> ('+f.size+' bytes) — name the subject and click Ingest.</span>'+pillsHtml;
+    };
+    rd.readAsText(f);
+  }
  $('paste').addEventListener('input',()=>{if($('paste').value.trim())pendingFile=null;});
  $('bUp').onclick=async()=>{
    const pasteText=($('paste').value||'').trim();

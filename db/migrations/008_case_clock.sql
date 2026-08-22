@@ -1,0 +1,17 @@
+-- 008 — where a case started on the clock it lives on.
+--
+-- Sandbox cases run against a movable clock (`sandbox_clock`, migration 006) so
+-- a seven-day chase can happen in a second. But a case's `created_at` is stamped
+-- in wall-clock time, so subtracting one from the other measured the CLOCK's
+-- total displacement rather than the case's own elapsed time: the second
+-- scenario of a demo session inherited every day the first had advanced, and a
+-- case that resolved on first contact reported forty days.
+--
+-- Recording the offset the case opened at makes elapsed time a subtraction
+-- between two points on the same clock. Live cases open at offset 0 and are
+-- unaffected — for them this column is always zero and the arithmetic is the
+-- plain wall-clock one.
+--
+-- Portable subset (see 005): runs on CockroachDB and SQLite alike. The loader
+-- tolerates this ALTER having already been applied.
+ALTER TABLE cases ADD COLUMN opened_offset_days DOUBLE PRECISION DEFAULT 0;

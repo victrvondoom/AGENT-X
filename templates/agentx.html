@@ -1,0 +1,927 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent X — tell it what happened</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='none' stroke='%236d6df0' stroke-width='2.6'/><path d='M16 8v9l6 4' fill='none' stroke='%236d6df0' stroke-width='2.6' stroke-linecap='round'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Agent X — the consumer workspace.
+
+   Two rules shaped every decision in this stylesheet.
+
+   ONE THING PER SCREEN. The home page asks one question. A case page leads with
+   one finding and one decision. Everything else — the evidence, the reasoning,
+   the policy citations, the plan graph, the hash chain — exists and is one click
+   away, never in the way. A consumer resolution product that opens on a dashboard
+   has already lost the person it was built for.
+
+   NOTHING IS HIDDEN, BUT NOT EVERYTHING IS SHOWN. Progressive disclosure here is
+   not a euphemism for concealment: every claim carries its evidence, every
+   approval carries its risk and its reversibility, every sandbox action is
+   labelled sandbox on its face. The disclosure is about ORDER, not availability.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:#fbfbfd; --panel:#ffffff; --panel-2:#f6f6fa;
+  --ink:#14141c; --muted:#63637a; --faint:#9a9ab0; --line:#e6e6ef;
+  --brand:#4f46e5; --brand-soft:rgba(79,70,229,.09); --brand-ink:#4338ca;
+  --ok:#0f9d58; --ok-soft:rgba(15,157,88,.10);
+  --warn:#b4690e; --warn-soft:rgba(180,105,14,.10);
+  --bad:#d02b4e; --bad-soft:rgba(208,43,78,.10);
+  --shadow:0 1px 2px rgba(20,20,28,.05), 0 12px 30px -18px rgba(20,20,28,.30);
+  --radius:16px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0b0b11; --panel:#14141d; --panel-2:#191924;
+    --ink:#ececf5; --muted:#9a9ab4; --faint:#6b6b85; --line:#26263a;
+    --brand:#8b85ff; --brand-soft:rgba(139,133,255,.14); --brand-ink:#a9a4ff;
+    --ok:#3ecf8e; --ok-soft:rgba(62,207,142,.13);
+    --warn:#e0a33c; --warn-soft:rgba(224,163,60,.13);
+    --bad:#ff6b8a; --bad-soft:rgba(255,107,138,.13);
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 16px 40px -22px rgba(0,0,0,.9);
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  -webkit-font-smoothing:antialiased; line-height:1.55;
+}
+.serif{font-family:'Instrument Serif',Georgia,serif;font-weight:400}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+a{color:var(--brand);text-decoration:none}
+a:hover{text-decoration:underline}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+
+/* ── shell ─────────────────────────────────────────────────────────────── */
+header{
+  position:sticky;top:0;z-index:40;backdrop-filter:blur(14px);
+  background:color-mix(in srgb, var(--bg) 86%, transparent);
+  border-bottom:1px solid var(--line);
+}
+.bar{max-width:1080px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:14px}
+.logo{display:flex;align-items:center;gap:9px;font-size:19px;letter-spacing:-.01em}
+.logo svg{color:var(--brand)}
+.spacer{flex:1}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:500;
+  padding:4px 10px;border-radius:999px;background:var(--panel-2);
+  border:1px solid var(--line);color:var(--muted);white-space:nowrap;
+}
+.chip.ok{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.chip.bad{background:var(--bad-soft);color:var(--bad);border-color:transparent}
+.chip.brand{background:var(--brand-soft);color:var(--brand-ink);border-color:transparent}
+main{max-width:1080px;margin:0 auto;padding:0 24px 120px}
+
+/* ── the one question ──────────────────────────────────────────────────── */
+.hero{padding:72px 0 40px;max-width:720px}
+.hero h1{font-family:'Instrument Serif',Georgia,serif;font-weight:400;
+  font-size:clamp(2.6rem,6vw,3.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 14px}
+.hero p.lede{color:var(--muted);font-size:16.5px;margin:0 0 30px;max-width:56ch}
+.compose{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:6px;transition:border-color .18s;
+}
+.compose:focus-within{border-color:var(--brand)}
+.compose textarea{
+  width:100%;min-height:120px;resize:vertical;border:none;outline:none;background:none;
+  color:var(--ink);font:inherit;font-size:16.5px;padding:16px 18px 8px;
+}
+.compose textarea::placeholder{color:var(--faint)}
+.compose .foot{display:flex;align-items:center;gap:10px;padding:8px 12px 10px;flex-wrap:wrap}
+.btn{
+  background:var(--brand);color:#fff;font-weight:550;font-size:14.5px;
+  padding:10px 20px;border-radius:11px;transition:filter .15s,opacity .15s;
+}
+.btn:hover{filter:brightness(1.08)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}
+.btn.ghost:hover{color:var(--ink)}
+.btn.danger{background:var(--bad)}
+.btn.sm{padding:7px 14px;font-size:13px;border-radius:9px}
+.examples{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+.examples button{
+  font-size:13px;color:var(--muted);background:var(--panel);border:1px solid var(--line);
+  padding:7px 13px;border-radius:999px;
+}
+.examples button:hover{color:var(--ink);border-color:var(--brand)}
+
+/* ── cards ─────────────────────────────────────────────────────────────── */
+.section{margin-top:52px}
+.section > h2{font-size:12px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--faint);font-weight:600;margin:0 0 16px}
+.card{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:22px 24px;margin-bottom:14px;
+}
+.card.click{cursor:pointer;transition:transform .14s,border-color .14s}
+.card.click:hover{transform:translateY(-1px);border-color:var(--brand)}
+.card .row{display:flex;align-items:flex-start;gap:14px}
+.case-title{font-size:17px;font-weight:600;margin:0}
+.case-sub{color:var(--muted);font-size:14px;margin:6px 0 0}
+.amount{font-family:'Instrument Serif',Georgia,serif;font-size:26px;white-space:nowrap}
+.empty{color:var(--faint);font-size:14.5px;padding:26px 0}
+
+/* ── case page ─────────────────────────────────────────────────────────── */
+.back{font-size:13.5px;color:var(--muted);display:inline-flex;gap:6px;align-items:center;margin:30px 0 18px}
+.headline{max-width:760px}
+.headline h1{font-family:'Instrument Serif',Georgia,serif;font-weight:400;
+  font-size:clamp(2rem,4.6vw,2.9rem);line-height:1.1;margin:8px 0 10px;letter-spacing:-.015em}
+.headline .finding{font-size:17px;color:var(--ink);margin:0 0 6px}
+.headline .why{color:var(--muted);font-size:14.5px;margin:0}
+.metrics{display:flex;gap:26px;flex-wrap:wrap;margin:26px 0 8px}
+.metric .k{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);font-weight:600}
+.metric .v{font-size:19px;margin-top:3px}
+.meter{height:5px;border-radius:99px;background:var(--panel-2);overflow:hidden;width:150px;margin-top:9px}
+.meter i{display:block;height:100%;background:var(--brand);border-radius:99px}
+
+details.disclose{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  margin-bottom:12px;overflow:hidden;
+}
+details.disclose > summary{
+  list-style:none;cursor:pointer;padding:16px 22px;display:flex;align-items:center;gap:12px;
+  font-weight:550;font-size:14.5px;
+}
+details.disclose > summary::-webkit-details-marker{display:none}
+details.disclose > summary::after{content:'›';margin-left:auto;color:var(--faint);
+  font-size:20px;transform:rotate(90deg);transition:transform .18s}
+details.disclose[open] > summary::after{transform:rotate(270deg)}
+details.disclose .body{padding:4px 22px 22px;border-top:1px solid var(--line)}
+details.disclose .body > *:first-child{margin-top:16px}
+
+.kv{display:grid;grid-template-columns:auto 1fr;gap:9px 20px;font-size:13.5px;align-items:baseline}
+.kv .k{color:var(--muted);white-space:nowrap}
+.kv .v{word-break:break-word}
+
+.claim{padding:12px 0;border-bottom:1px solid var(--line)}
+.claim:last-child{border-bottom:none}
+.claim .t{font-size:15px}
+.claim .m{font-size:12.5px;color:var(--muted);margin-top:4px;display:flex;gap:10px;flex-wrap:wrap}
+
+.alert{border-radius:14px;padding:16px 20px;margin-bottom:14px;font-size:14.5px;border:1px solid transparent}
+.alert.bad{background:var(--bad-soft);color:var(--bad);border-color:color-mix(in srgb,var(--bad) 25%,transparent)}
+.alert.warn{background:var(--warn-soft);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 25%,transparent)}
+.alert.ok{background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 25%,transparent)}
+.alert b{font-weight:600}
+
+.approve{
+  border:1.5px solid var(--brand);background:var(--brand-soft);
+  border-radius:var(--radius);padding:22px 24px;margin-bottom:14px;
+}
+.approve .q{font-size:17px;font-weight:550;margin:0 0 12px}
+.approve .facts{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.approve .acts{display:flex;gap:10px;flex-wrap:wrap}
+
+.q-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:20px 22px;margin-bottom:12px}
+.q-card .q{font-size:16px;font-weight:550;margin:0 0 6px}
+.q-card .why{color:var(--muted);font-size:13.5px;margin:0 0 14px}
+.opts{display:flex;gap:8px;flex-wrap:wrap}
+.opts button{border:1px solid var(--line);background:var(--panel-2);padding:8px 14px;
+  border-radius:10px;font-size:13.5px}
+.opts button:hover{border-color:var(--brand);color:var(--brand-ink)}
+.q-card input[type=text]{width:100%;padding:10px 13px;border:1px solid var(--line);
+  border-radius:10px;background:var(--panel-2);color:var(--ink);font:inherit;font-size:14px;outline:none}
+.q-card input[type=text]:focus{border-color:var(--brand)}
+
+.timeline{position:relative;padding-left:22px}
+.timeline:before{content:'';position:absolute;left:5px;top:6px;bottom:6px;width:1.5px;background:var(--line)}
+.tl{position:relative;padding:9px 0}
+.tl:before{content:'';position:absolute;left:-21px;top:15px;width:9px;height:9px;border-radius:50%;
+  background:var(--panel);border:2px solid var(--faint)}
+.tl.hi:before{border-color:var(--brand);background:var(--brand)}
+.tl.good:before{border-color:var(--ok);background:var(--ok)}
+.tl .s{font-size:14px}
+.tl .m{font-size:12px;color:var(--faint);margin-top:2px}
+
+table.plain{width:100%;border-collapse:collapse;font-size:13.5px}
+table.plain th{text-align:left;font-weight:600;color:var(--muted);font-size:11.5px;
+  letter-spacing:.08em;text-transform:uppercase;padding:6px 10px 6px 0;border-bottom:1px solid var(--line)}
+table.plain td{padding:9px 10px 9px 0;border-bottom:1px solid var(--line);vertical-align:top}
+table.plain tr:last-child td{border-bottom:none}
+.scroll{overflow-x:auto}
+
+pre.out{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;
+  padding:16px 18px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.6;
+  white-space:pre-wrap;word-break:break-word;max-height:460px;overflow:auto;margin:0}
+
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:11px;overflow:hidden}
+.seg button{padding:7px 12px;font-size:12.5px;color:var(--muted);background:var(--panel)}
+.seg button.on{background:var(--brand);color:#fff}
+
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:90;
+  background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:11px;font-size:14px;
+  box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(-4px)}
+
+.spin{display:inline-block;width:13px;height:13px;border:2px solid currentColor;
+  border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.working{color:var(--muted);font-size:14px;display:flex;align-items:center;gap:10px;padding:18px 0}
+
+footer{border-top:1px solid var(--line);margin-top:70px}
+.foot-in{max-width:1080px;margin:0 auto;padding:26px 24px;color:var(--faint);font-size:12.5px;
+  display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+.hidden{display:none !important}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <div class="logo">
+      <svg width="26" height="26" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="13" stroke="currentColor" stroke-width="2.6"/><path d="M16 8v9l6 4" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+      <span class="serif" style="font-size:22px">Agent X</span>
+    </div>
+    <span class="spacer"></span>
+    <span class="chip" id="engineChip" title="Which database is live, and what it can prove">…</span>
+    <button class="chip" id="tokenBtn" title="Actions that change a case need a token">key</button>
+    <a class="chip" href="#/how">How it works</a>
+    <a class="chip" href="/app" title="Agent X — the trust layer underneath">Agent&nbsp;X</a>
+  </div>
+</header>
+
+<main id="app"><div class="working"><span class="spin"></span> starting…</div></main>
+
+<footer><div class="foot-in">
+  <span>Agent X turns a consumer problem into an evidence-backed case, plans the resolution, acts, follows up, and proves what it did.</span>
+  <span class="spacer"></span>
+  <a href="/api/agentx/health" target="_blank">system report</a>
+  <a href="/api/agentx/public-key" target="_blank">public key</a>
+</div></footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   State is deliberately thin: a route, a case snapshot, and a boot report.
+   The server returns a whole case in one call, so there is nothing here to keep
+   in sync and no way for two parts of the screen to disagree with each other.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const S = {boot:null, cases:[], snap:null, busy:false};
+const $ = s => document.querySelector(s);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const token = () => localStorage.getItem('agentx_token') || '';
+
+function toast(msg, ms=2600){
+  const t=$('#toast'); t.textContent=msg; t.classList.add('on');
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('on'), ms);
+}
+
+async function api(path, opts={}){
+  const o = Object.assign({headers:{}}, opts);
+  if(o.body && !(o.body instanceof FormData)){
+    o.headers['Content-Type']='application/json';
+    if(typeof o.body!=='string') o.body=JSON.stringify(o.body);
+  }
+  if(token()) o.headers['Authorization']='Bearer '+token();
+  const r = await fetch('/api/agentx'+path, o);
+  const ct = r.headers.get('content-type')||'';
+  const data = ct.includes('json') ? await r.json() : await r.text();
+  if(!r.ok){
+    const msg = (data && data.detail) ? (typeof data.detail==='string'?data.detail:JSON.stringify(data.detail)) : ('request failed ('+r.status+')');
+    if(r.status===401) askToken(msg);
+    throw new Error(msg);
+  }
+  return data;
+}
+
+function askToken(why){
+  const cur = token();
+  const v = prompt((why? why+'\n\n' : '')+'Paste the access token for actions that change a case.\n(The README hands judges a demo token.)', cur);
+  if(v!==null){ localStorage.setItem('agentx_token', v.trim()); toast(v.trim()? 'token saved' : 'token cleared'); render(); }
+}
+$('#tokenBtn').onclick = ()=>askToken('');
+
+/* ── formatting helpers ────────────────────────────────────────────────── */
+const STATE_TONE = {
+  RESOLVED:'ok', CLOSED_UNRESOLVED:'', WITHDRAWN:'',
+  ACTION_REQUIRED:'brand', NEEDS_INPUT:'warn', FOLLOW_UP_REQUIRED:'warn',
+  ESCALATED:'warn', WAITING_EXTERNAL:'', ACTION_SUBMITTED:'', INVESTIGATING:'', OPEN:''
+};
+const pct = v => v==null? '—' : Math.round(v*100)+'%';
+function stateChip(c){
+  const t = STATE_TONE[c.state]||'';
+  const label = (c.state_copy && c.state_copy.label) || c.state;
+  return `<span class="chip ${t}">${esc(label)}</span>`;
+}
+function when(ts){
+  if(!ts) return '';
+  try{ return new Date(ts).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}); }
+  catch(e){ return ts; }
+}
+
+/* ── routing ───────────────────────────────────────────────────────────── */
+function route(){ return (location.hash||'#/').slice(1); }
+window.addEventListener('hashchange', render);
+
+async function render(){
+  const r = route();
+  if(r.startsWith('/case/')) return renderCase(r.slice(6));
+  if(r === '/how') return renderHow();
+  return renderHome();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   HOME — one question, then the cases that already exist.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const EXAMPLES = [
+  "Kartly charged me twice for the same order. Two charges of 2,399.00 INR on 2026-08-02. Order 402-9938271.",
+  "They charged me again",
+  "Meridian Suites cancelled my booking two days before check-in. Booking reference MRD48192.",
+  "My SkyLink flight was delayed and I arrived over four hours late. Booking reference SL22617.",
+  "I don't understand this bill"
+];
+
+async function renderHome(){
+  $('#app').innerHTML = `
+    <div class="hero">
+      <h1>What happened?</h1>
+      <p class="lede">Describe the problem the way you would to a friend. Agent X works out what it is,
+        what you are owed, and what to do about it — then does it, and proves what it did.</p>
+      <div class="compose">
+        <textarea id="intake" placeholder="I was charged twice…&#10;My hotel cancelled my booking…&#10;This subscription renewed without me realising…"></textarea>
+        <div class="foot">
+          <button class="btn" id="go">Open a case</button>
+          <span class="spacer"></span>
+          <span class="chip" id="autoChip" title="How much Agent X may do without asking you">…</span>
+          <select id="autonomy" class="chip" style="padding:4px 8px">
+            <option value="0">0 · information only</option>
+            <option value="1">1 · analysis and advice</option>
+            <option value="2" selected>2 · prepare, then confirm</option>
+            <option value="3">3 · act on reversible things</option>
+            <option value="4">4 · autonomous within a policy</option>
+          </select>
+        </div>
+      </div>
+      <div class="examples" id="examples"></div>
+    </div>
+    <div id="live"></div>
+    <div class="section" id="caseList"><h2>Your cases</h2><div class="working"><span class="spin"></span> loading…</div></div>
+    <div class="section" id="demoBox"></div>`;
+
+  $('#examples').innerHTML = EXAMPLES.map((e,i)=>`<button data-i="${i}">${esc(e.length>52? e.slice(0,52)+'…' : e)}</button>`).join('');
+  $('#examples').onclick = ev => { const b=ev.target.closest('button'); if(!b) return;
+    $('#intake').value = EXAMPLES[+b.dataset.i]; $('#intake').focus(); previewLive(); };
+  $('#intake').addEventListener('input', debounce(previewLive, 420));
+  $('#go').onclick = openCase;
+  $('#autonomy').onchange = updateAutoChip;
+  updateAutoChip();
+  loadCases();
+  renderDemo();
+}
+
+function debounce(fn, ms){ let h; return (...a)=>{clearTimeout(h); h=setTimeout(()=>fn(...a), ms);} }
+
+function updateAutoChip(){
+  const lv = +($('#autonomy')||{value:2}).value;
+  const l = (S.boot && S.boot.autonomy_levels || []).find(x=>x.level===lv);
+  const chip = $('#autoChip'); if(!chip||!l) return;
+  chip.textContent = l.name; chip.title = l.means;
+}
+
+/* A live look at the classifier as you type. This is the single most convincing
+   thing on the page: four words produce six live readings, and the screen says so
+   before any case exists. */
+async function previewLive(){
+  const text = ($('#intake').value||'').trim();
+  const box = $('#live'); if(!box) return;
+  if(text.length < 6){ box.innerHTML=''; return; }
+  let u; try{ u = await api('/understand', {method:'POST', body:{text}}); }catch(e){ box.innerHTML=''; return; }
+  const live = (u.hypotheses||[]).filter(h=>h.posterior>=0.04).slice(0,6);
+  if(!live.length){ box.innerHTML=''; return; }
+  const q = (u.questions||[])[0];
+  box.innerHTML = `
+    <div class="card" style="margin-top:6px">
+      <div class="row" style="align-items:center">
+        <div style="flex:1">
+          <div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:600">
+            ${u.ambiguous ? 'Agent X reads this several ways' : 'Agent X reads this as'}</div>
+          <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+            ${live.map(h=>`<span class="chip ${h===live[0]&&!u.ambiguous?'brand':''}">${esc(h.label)} · ${pct(h.posterior)}</span>`).join('')}
+          </div>
+          ${u.ambiguous && q ? `<div style="margin-top:14px;font-size:14px;color:var(--muted)">
+              It would ask one question first — <b style="color:var(--ink)">${esc(q.question)}</b>
+              <span class="chip" style="margin-left:8px" title="expected information gain">${q.expected_bits} bits</span></div>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+async function openCase(){
+  const description = ($('#intake').value||'').trim();
+  if(!description) return toast('Tell Agent X what happened first.');
+  const btn=$('#go'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> working…';
+  try{
+    const snap = await api('/cases', {method:'POST', body:{
+      description, autonomy_level:+$('#autonomy').value, use_llm:false}});
+    location.hash = '#/case/'+snap.case.id;
+  }catch(e){ toast(e.message); }
+  finally{ btn.disabled=false; btn.textContent='Open a case'; }
+}
+
+async function loadCases(){
+  try{ S.cases = await api('/cases'); }catch(e){ S.cases=[]; }
+  const box = $('#caseList'); if(!box) return;
+  if(!S.cases.length){
+    box.innerHTML = `<h2>Your cases</h2><div class="empty">No cases yet. Describe a problem above, or run one of the demonstrations below.</div>`;
+    return;
+  }
+  const open = S.cases.filter(c=>!['RESOLVED','CLOSED_UNRESOLVED','WITHDRAWN'].includes(c.state));
+  const done = S.cases.filter(c=>['RESOLVED','CLOSED_UNRESOLVED','WITHDRAWN'].includes(c.state));
+  box.innerHTML = `
+    ${open.length? `<h2>Active</h2>${open.map(caseCard).join('')}`:''}
+    ${done.length? `<h2 style="margin-top:34px">Resolved</h2>${done.map(caseCard).join('')}`:''}`;
+}
+
+function caseCard(c){
+  const needs = c.pending_approvals>0 ? `<span class="chip brand">needs your go-ahead</span>`
+              : (c.open_questions>0 ? `<span class="chip warn">needs one answer</span>` : '');
+  return `<a class="card click" style="display:block;color:inherit" href="#/case/${esc(c.id)}">
+    <div class="row">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          ${stateChip(c)} ${needs}
+          <span class="chip mono" style="font-size:11px">${esc(c.id)}</span>
+        </div>
+        <p class="case-title" style="margin-top:11px">${esc(c.title || c.description)}</p>
+        <p class="case-sub">${esc(c.headline || (c.state_copy&&c.state_copy.detail) || '')}</p>
+      </div>
+      <div style="text-align:right">
+        <div class="amount">${esc(c.amount||'—')}</div>
+      </div>
+    </div></a>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CASE — one finding, one decision, everything else folded away.
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function renderCase(id){
+  $('#app').innerHTML = `<div class="working"><span class="spin"></span> opening ${esc(id)}…</div>`;
+  let s; try{ s = await api('/cases/'+encodeURIComponent(id)); }
+  catch(e){ $('#app').innerHTML = `<div class="back"><a href="#/">← all cases</a></div><div class="alert bad">${esc(e.message)}</div>`; return; }
+  S.snap = s;
+  const c = s.case;
+  const topClaim = (s.claims||[])[0];
+  const best = (s.remedies||[]).find(r=>r.eligibility==='eligible') || (s.remedies||[])[0];
+  const blocking = (s.contradictions||[]).filter(x=>x.severity==='blocking');
+
+  $('#app').innerHTML = `
+    <div class="back"><a href="#/">← all cases</a></div>
+
+    <div class="headline">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        ${stateChip(c)}<span class="chip mono" style="font-size:11px">${esc(c.id)}</span>
+        ${c.problem_type? `<span class="chip">${esc(c.problem_type.replace(/_/g,' '))}</span>`:''}
+        ${s.engine && s.engine.engine==='sqlite' ? `<span class="chip" title="${esc((s.engine.not_available||[]).join(' · '))}">local engine</span>`:''}
+      </div>
+      <h1>${esc(c.title || c.description)}</h1>
+      ${topClaim? `<p class="finding">${esc(topClaim.claim)}</p>`:''}
+      <p class="why">${esc(s.headline||'')}</p>
+    </div>
+
+    <div class="metrics">
+      <div class="metric"><div class="k">In dispute</div><div class="v">${esc(c.amount||'—')}</div></div>
+      <div class="metric"><div class="k">Confidence</div><div class="v">${pct(c.confidence)}</div>
+        <div class="meter"><i style="width:${Math.round((c.confidence||0)*100)}%"></i></div></div>
+      <div class="metric"><div class="k">Autonomy</div><div class="v" id="autoV">level ${c.autonomy_level}</div>
+        <div class="seg" style="margin-top:8px">${[0,1,2,3,4].map(l=>`<button data-l="${l}" class="${l===c.autonomy_level?'on':''}">${l}</button>`).join('')}</div></div>
+      <div class="metric"><div class="k">Record</div><div class="v">${s.chain.length} entries</div>
+        <div style="margin-top:8px"><a class="chip" href="/api/agentx/cases/${esc(c.id)}/chain" target="_blank"
+          title="Re-walks and re-hashes the whole chain, server-side, on demand">verify chain</a></div></div>
+    </div>
+
+    <div class="section" style="margin-top:34px" id="act"></div>
+    <div id="folds" class="section" style="margin-top:8px"></div>`;
+
+  document.querySelectorAll('.seg button').forEach(b=>b.onclick = async ()=>{
+    try{ await api(`/cases/${encodeURIComponent(c.id)}/autonomy`, {method:'POST', body:{level:+b.dataset.l}});
+      toast('Autonomy set to level '+b.dataset.l); renderCase(c.id);
+    }catch(e){ toast(e.message); }
+  });
+
+  renderAct(s, blocking, best);
+  renderFolds(s, best);
+}
+
+/* The one thing this screen is asking for, if it is asking for anything. */
+function renderAct(s, blocking, best){
+  const c = s.case, box = $('#act');
+  let html = '';
+
+  if(blocking.length){
+    html += `<div class="alert bad"><b>Two of your documents disagree.</b><br>
+      ${blocking.map(x=>esc(x.detail)).join('<br>')}<br>
+      <span style="opacity:.85">Agent X will not act on a value two sources disagree about. Tell it which is right below.</span></div>`;
+  }
+
+  for(const a of (s.approvals||[])){
+    html += `<div class="approve">
+      <p class="q">${esc(a.prompt)}</p>
+      <div class="facts">
+        <span class="chip">${esc((a.action||'').replace(/_/g,' '))}</span>
+        <span class="chip">needs level ${a.level==null?'—':a.level}</span>
+        ${planRisk(s, a)}
+      </div>
+      <div class="acts">
+        <button class="btn" data-approve="${esc(a.id)}">Approve</button>
+        <button class="btn ghost" data-decline="${esc(a.id)}">Not now</button>
+      </div></div>`;
+  }
+
+  for(const q of (s.questions||[])){
+    const opts = (q.options||[]);
+    html += `<div class="q-card">
+      <p class="q">${esc(q.question)}</p>
+      ${q.why? `<p class="why">${esc(q.why)}</p>`:''}
+      ${opts.length
+        ? `<div class="opts">${opts.map(o=>`<button data-q="${esc(q.id)}" data-v="${esc(o)}">${esc(o)}</button>`).join('')}</div>`
+        : `<input type="text" data-qtext="${esc(q.id)}" placeholder="Type your answer and press Enter">`}
+      ${q.value_bits!=null? `<div style="margin-top:10px"><span class="chip" title="expected information gain">${q.value_bits} bits</span></div>`:''}
+    </div>`;
+  }
+
+  if(!s.approvals.length && !s.questions.length){
+    if(c.state==='WAITING_EXTERNAL' || c.state==='ACTION_SUBMITTED'){
+      const nextFu = (s.followups||[]).find(f=>f.status==='SCHEDULED');
+      html += `<div class="alert warn"><b>${esc((c.state_copy||{}).label||'')}.</b>
+        ${esc((c.state_copy||{}).detail||'')}
+        ${nextFu? ` Agent X will chase on ${esc(when(nextFu.due_at))} without being asked.`:''}</div>`;
+    } else if(c.state==='RESOLVED'){
+      html += `<div class="alert ok"><b>Resolved.</b> ${esc(c.outcome_summary||'Confirmed against the company’s own records.')}
+        <div style="margin-top:12px"><button class="btn sm" id="showReceipt">Show the receipt</button></div></div>`;
+    } else {
+      html += `<div class="alert"><b>${esc((c.state_copy||{}).label||c.state)}.</b> ${esc((c.state_copy||{}).detail||'')}
+        <div style="margin-top:12px"><button class="btn sm ghost" id="runNext">Let Agent X continue</button></div></div>`;
+    }
+  }
+  box.innerHTML = html;
+
+  box.querySelectorAll('[data-approve]').forEach(b=>b.onclick=()=>decide(c.id,b.dataset.approve,true,b));
+  box.querySelectorAll('[data-decline]').forEach(b=>b.onclick=()=>decide(c.id,b.dataset.decline,false,b));
+  box.querySelectorAll('[data-q]').forEach(b=>b.onclick=()=>answer(c.id,b.dataset.q,b.dataset.v,b));
+  box.querySelectorAll('[data-qtext]').forEach(i=>i.onkeydown=ev=>{
+    if(ev.key==='Enter' && i.value.trim()) answer(c.id, i.dataset.qtext, i.value.trim(), i); });
+  const rn=$('#runNext'); if(rn) rn.onclick=async()=>{ rn.disabled=true; rn.innerHTML='<span class="spin"></span> working…';
+    try{ await api(`/cases/${encodeURIComponent(c.id)}/advance`,{method:'POST',body:{}}); renderCase(c.id); }
+    catch(e){ toast(e.message); rn.disabled=false; rn.textContent='Let Agent X continue'; } };
+  const sr=$('#showReceipt'); if(sr) sr.onclick=()=>{ const d=document.getElementById('receiptFold'); if(d){ d.open=true; d.scrollIntoView({behavior:'smooth',block:'center'}); } };
+}
+
+function planRisk(s, a){
+  const st = ((s.plan||{}).steps||[]).find(x=>x.id===a.step_id);
+  if(!st) return '';
+  const rev = ['escalate','cancel','submit_form','email'].includes(st.action);
+  return `<span class="chip ${st.risk==='high'?'bad':(st.risk==='medium'?'warn':'')}">${esc(st.risk)} risk</span>
+          <span class="chip ${rev?'bad':'ok'}">${rev?'cannot be undone':'reversible'}</span>`;
+}
+
+async function decide(caseId, authId, granted, btn){
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> working…';
+  try{ await api(`/cases/${encodeURIComponent(caseId)}/approve`,
+        {method:'POST', body:{authorization_id:authId, granted}});
+    toast(granted? 'Approved — Agent X is acting.' : 'Left for now.');
+    renderCase(caseId);
+  }catch(e){ toast(e.message); btn.disabled=false; btn.textContent=granted?'Approve':'Not now'; }
+}
+
+async function answer(caseId, qid, value, el){
+  el.disabled=true;
+  try{ await api(`/cases/${encodeURIComponent(caseId)}/answer`,
+        {method:'POST', body:{question_id:qid, value, use_llm:false}});
+    renderCase(caseId);
+  }catch(e){ toast(e.message); el.disabled=false; }
+}
+
+/* Everything else, folded. Open in the order a sceptic would want it. */
+function renderFolds(s, best){
+  const c = s.case;
+  const parts = [];
+
+  /* Experience first, when there is any. It is the one thing on this page a
+     user could not have worked out themselves — they only ever have their own
+     case, and this is what every other case against the same company taught. */
+  const pr = s.prior, sys = s.systemic;
+  if((pr && pr.cases) || sys){
+    parts.push(fold('What happened last time with this company', `
+      ${sys? `<div class="alert warn"><b>This looks like policy, not circumstance.</b><br>
+          ${esc(sys.detail)}<br>
+          <span style="opacity:.85">Based on ${sys.basis.length} prior case(s):
+          ${sys.basis.map(esc).join(', ')}</span></div>`:''}
+      ${pr && pr.cases? `
+        <div class="kv">
+          <div class="k">Prior cases</div><div class="v">${pr.cases}
+            <span class="chip ${pr.actionable?'ok':''}">${esc(pr.strength)}</span>
+            ${pr.actionable? '' : '<span class="chip">too few to change the plan</span>'}</div>
+          <div class="k">What happened</div><div class="v">${esc(pr.note||'')}</div>
+          ${pr.best_strategy? `<div class="k">Usually settled by</div>
+            <div class="v">${esc(pr.best_strategy.replace(/_/g,' '))}</div>`:''}
+          ${pr.typical_chases!=null? `<div class="k">Chases needed</div>
+            <div class="v">typically ${pr.typical_chases}</div>`:''}
+          ${pr.escalation_rate!=null? `<div class="k">Needed escalation</div>
+            <div class="v">${Math.round(pr.escalation_rate*100)}% of resolved cases</div>`:''}
+          ${pr.rights_that_worked && pr.rights_that_worked.length? `<div class="k">Rights that worked</div>
+            <div class="v">${pr.rights_that_worked.map(esc).join(', ')}</div>`:''}
+          ${pr.adjustment? `<div class="k">Applied to this plan</div>
+            <div class="v">${esc(pr.adjustment)}</div>`:''}
+          <div class="k">Learned from</div>
+            <div class="v mono" style="font-size:11.5px">${(pr.basis||[]).map(esc).join(' · ')}</div>
+        </div>
+        <p style="color:var(--muted);font-size:13px;margin-top:14px">
+          These records hold the <em>shape</em> of a resolution — company, problem class,
+          remedy, chases, escalation — and never its contents. That is why they stay true
+          after a case is erased: they were never personal data.</p>`:''}`,
+      Boolean(sys)));
+  }
+
+  if(best){
+    parts.push(fold('Why Agent X thinks this, and what it would get', `
+      <div class="kv">
+        <div class="k">Recommended</div><div class="v"><b>${esc(best.title)}</b> — ${esc(best.because)}</div>
+        <div class="k">Worth about</div><div class="v">${esc(bestValue(best, c))}</div>
+        <div class="k">Route</div><div class="v">${esc(best.eligibility.replace(/_/g,' '))}</div>
+        ${(best.blocked_by||[]).length? `<div class="k">Blocked by</div><div class="v">${best.blocked_by.map(esc).join('<br>')}</div>`:''}
+      </div>
+      <h3 style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:22px 0 10px">What the records show</h3>
+      ${(s.claims||[]).map(cl=>`<div class="claim">
+          <div class="t">${esc(cl.claim)}</div>
+          <div class="m"><span>confidence ${pct(cl.confidence)}</span>
+            <span>${cl.evidence.length} source${cl.evidence.length===1?'':'s'}</span>
+            ${cl.contested? '<span style="color:var(--bad)">contested</span>':''}</div>
+        </div>`).join('') || '<div class="empty">No claims established yet.</div>'}
+      <h3 style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:22px 0 10px">Rules considered</h3>
+      <div class="scroll"><table class="plain"><thead><tr><th>Rule</th><th>Applies</th><th>Because</th></tr></thead><tbody>
+        ${(s.policies||[]).map(p=>`<tr>
+          <td><b>${esc(p.title)}</b><br><span style="color:var(--faint);font-size:12px">${esc(p.citation||'')}</span></td>
+          <td><span class="chip ${p.applies==='yes'?'ok':(p.applies==='no'?'':'warn')}">${esc(p.applies)}</span></td>
+          <td style="color:var(--muted)">${esc(p.because||'')}</td></tr>`).join('')}
+      </tbody></table></div>`, (s.approvals||[]).length>0));
+  }
+
+  if(s.plan){
+    const v = s.plan.validation||{};
+    parts.push(fold(`The plan — ${esc(s.plan.strategy.replace(/_/g,' '))}, ${s.plan.steps.length} steps`, `
+      <div style="margin-bottom:14px">
+        <span class="chip ${v.ok?'ok':'bad'}">${v.ok?'passed deterministic validation':'failed validation'}</span>
+        <span class="chip">proposed by ${esc(s.plan.proposed_by)}</span>
+        <span class="chip">confidence ${pct(s.plan.confidence)}</span>
+      </div>
+      ${(v.errors||[]).length? `<div class="alert bad">${v.errors.map(esc).join('<br>')}</div>`:''}
+      ${(v.warnings||[]).length? `<div class="alert warn">${v.warnings.map(esc).join('<br>')}</div>`:''}
+      <div class="scroll"><table class="plain"><thead><tr><th>#</th><th>Step</th><th>Action</th><th>If it fails</th><th>State</th></tr></thead><tbody>
+        ${s.plan.steps.map(st=>`<tr>
+          <td class="mono">${st.ordinal+1}</td>
+          <td>${esc(st.title)}${st.wait_days? ` <span class="chip">wait ${st.wait_days}d</span>`:''}</td>
+          <td class="mono" style="font-size:12px">${esc(st.action)}</td>
+          <td style="color:var(--muted)">${esc((st.on_failure||'—').replace(/_/g,' '))}</td>
+          <td><span class="chip ${st.status==='DONE'?'ok':(st.status==='FAILED'?'bad':'')}">${esc(st.status.toLowerCase())}</span></td>
+        </tr>`).join('')}
+      </tbody></table></div>
+      <p style="color:var(--muted);font-size:13px;margin-top:14px">Checks run against this plan:
+        ${(v.checks||[]).map(esc).join(' · ')}.</p>`));
+  }
+
+  parts.push(fold(`Evidence — ${(s.evidence||[]).length} item${(s.evidence||[]).length===1?'':'s'}`, `
+    <p style="color:var(--muted);font-size:13.5px;margin:0 0 14px">Every fact Agent X uses traces to one of these. The
+      hash is of the file you gave it, so you can re-hash your own copy and check.</p>
+    <div class="scroll"><table class="plain"><thead><tr><th>Kind</th><th>File</th><th>Trust</th><th>SHA-256</th></tr></thead><tbody>
+      ${(s.evidence||[]).map(e=>`<tr>
+        <td>${esc(e.kind.replace(/_/g,' '))}</td>
+        <td><a href="/api/agentx/cases/${esc(c.id)}/evidence/${esc(e.id)}" target="_blank">${esc(e.filename||e.id)}</a></td>
+        <td><span class="chip">${esc((e.trust||'').replace(/_/g,' '))}</span></td>
+        <td class="mono" style="font-size:11px">${esc((e.sha256||'').slice(0,20))}…</td></tr>`).join('')}
+    </tbody></table></div>
+    ${(s.contradictions||[]).length? `<h3 style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:22px 0 10px">Contradictions</h3>
+      ${s.contradictions.map(x=>`<div class="alert ${x.severity==='blocking'?'bad':'warn'}">
+        <b>${esc(x.severity)}</b> — ${esc(x.detail)}</div>`).join('')}`:''}`));
+
+  parts.push(fold(`What Agent X did — ${(s.executions||[]).length} action${(s.executions||[]).length===1?'':'s'}`, `
+    <div class="timeline">${timelineRows(s)}</div>
+    ${(s.communications||[]).length? `
+      <h3 style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:26px 0 10px">Correspondence</h3>
+      ${s.communications.map(m=>`<details class="disclose" style="box-shadow:none">
+        <summary>${esc(m.direction)} · ${esc(m.channel)} · ${esc(m.subject||'(no subject)')}</summary>
+        <div class="body"><pre class="out">${esc(m.body||'')}</pre>
+        <div class="kv" style="margin-top:12px"><div class="k">sha256</div><div class="v mono" style="font-size:11px">${esc(m.sha256||'')}</div></div></div>
+      </details>`).join('')}`:''}`));
+
+  if((s.deadlines||[]).length || (s.followups||[]).length){
+    parts.push(fold('Deadlines and follow-ups', `
+      <div class="scroll"><table class="plain"><thead><tr><th>Deadline</th><th>Kind</th><th>Due</th><th>Days left</th></tr></thead><tbody>
+        ${(s.deadlines||[]).map(d=>`<tr>
+          <td>${esc(d.label)}</td><td><span class="chip">${esc(d.kind)}</span></td>
+          <td>${esc(when(d.due_at))}</td>
+          <td class="${d.overdue?'':''}">${d.overdue? '<span class="chip bad">passed</span>' : (d.days_left!=null? d.days_left.toFixed(0):'—')}</td>
+        </tr>`).join('')}
+      </tbody></table></div>
+      <h3 style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:22px 0 10px">Scheduled follow-ups</h3>
+      <div class="scroll"><table class="plain"><thead><tr><th>What</th><th>When</th><th>Attempt</th><th>Status</th></tr></thead><tbody>
+        ${(s.followups||[]).map(f=>`<tr>
+          <td>${esc(f.kind)}${f.detail? ` <span style="color:var(--faint)">— ${esc(f.detail)}</span>`:''}</td>
+          <td>${esc(when(f.due_at))}</td><td>${f.attempt}/${f.max_attempts}</td>
+          <td><span class="chip ${f.status==='SCHEDULED'?'brand':''}">${esc(f.status.toLowerCase())}</span></td>
+        </tr>`).join('')}
+      </tbody></table></div>`));
+  }
+
+  parts.push(fold('Proof — the receipt and the record', `
+    <p style="color:var(--muted);font-size:13.5px;margin:0 0 16px">The receipt is signed and binds to this case's
+      hash-linked record. Anyone can check it without asking Agent X anything — the instructions travel inside it.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+      <button class="btn sm" id="btnReceipt">Show the receipt</button>
+      <button class="btn sm ghost" id="btnVerify">Verify it</button>
+      <button class="btn sm ghost" id="btnChain">Show the record</button>
+      <a class="btn sm ghost" href="/api/agentx/cases/${esc(c.id)}/package?audience=payment_dispute" target="_blank">Evidence package</a>
+      <span class="spacer"></span>
+      <button class="btn sm danger" id="btnForget" title="Crypto-shred this case">Erase this case</button>
+    </div>
+    <div id="proofOut"></div>`, false, 'receiptFold'));
+
+  $('#folds').innerHTML = parts.join('');
+
+  const out = $('#proofOut');
+  $('#btnReceipt').onclick = async()=>{ out.innerHTML='<div class="working"><span class="spin"></span> building…</div>';
+    try{ const r = await api(`/cases/${encodeURIComponent(c.id)}/receipt`); out.innerHTML = `<pre class="out">${esc(r.text)}</pre>`; }
+    catch(e){ out.innerHTML = `<div class="alert bad">${esc(e.message)}</div>`; } };
+  $('#btnVerify').onclick = async()=>{ out.innerHTML='<div class="working"><span class="spin"></span> verifying…</div>';
+    try{
+      const r = await api(`/cases/${encodeURIComponent(c.id)}/receipt`);
+      const v = r.verification || await api('/receipt/verify',{method:'POST',body:r.envelope});
+      out.innerHTML = `<div class="alert ${v.ok?'ok':'bad'}"><b>${v.ok?'Verified':'Verification failed'}</b></div>
+        <div class="scroll"><table class="plain"><thead><tr><th>Check</th><th>Result</th><th>Detail</th></tr></thead><tbody>
+        ${Object.entries(v.checks||{}).map(([k,c2])=>`<tr><td>${esc(k.replace(/_/g,' '))}</td>
+          <td><span class="chip ${c2.ok===true?'ok':(c2.ok===false?'bad':'')}">${c2.ok===true?'pass':(c2.ok===false?'fail':'not checked')}</span></td>
+          <td style="color:var(--muted)">${esc(c2.detail)}</td></tr>`).join('')}
+        </tbody></table></div>`;
+    }catch(e){ out.innerHTML = `<div class="alert bad">${esc(e.message)}</div>`; } };
+  $('#btnChain').onclick = async()=>{ out.innerHTML='<div class="working"><span class="spin"></span> loading…</div>';
+    try{ const r = await api(`/cases/${encodeURIComponent(c.id)}/chain`);
+      out.innerHTML = `<div class="alert ${r.verification.ok?'ok':'bad'}">${esc(r.verification.reason)} · ${r.verification.rows} entries</div>
+        <div class="scroll"><table class="plain"><thead><tr><th>#</th><th>Step</th><th>By</th><th>Detail</th><th>Hash</th></tr></thead><tbody>
+        ${r.rows.map(x=>`<tr><td class="mono">${x.seq}</td><td>${esc(x.step)}</td><td><span class="chip">${esc(x.actor)}</span></td>
+          <td style="color:var(--muted);max-width:380px"><span class="mono" style="font-size:11px">${esc(JSON.stringify(x.detail).slice(0,220))}</span>
+            ${x.shredded? ' <span class="chip bad">shredded</span>':''}${x.sealed&&!x.shredded? ' <span class="chip">sealed</span>':''}</td>
+          <td class="mono" style="font-size:11px">${esc((x.content_hash||'').slice(0,12))}…</td></tr>`).join('')}
+        </tbody></table></div>`;
+    }catch(e){ out.innerHTML = `<div class="alert bad">${esc(e.message)}</div>`; } };
+  $('#btnForget').onclick = async()=>{
+    if(!confirm('Erase this case?\n\nAgent X destroys the key its contents were sealed under. The content becomes unrecoverable — and the record still verifies, which is the point.')) return;
+    out.innerHTML='<div class="working"><span class="spin"></span> shredding…</div>';
+    try{ const r = await api(`/cases/${encodeURIComponent(c.id)}/forget`,{method:'POST'});
+      out.innerHTML = `<div class="alert ok"><b>Erased.</b> The key is destroyed and the sealed content cannot be read again.</div>
+        <div class="kv">
+          <div class="k">key material</div><div class="v">${r.key_material_null? 'null':'still present'}</div>
+          <div class="k">destroyed_at</div><div class="v">${r.destroyed_at_set? 'set':'unset'}</div>
+          <div class="k">unrecoverable</div><div class="v">${r.unrecoverable? 'yes':'no'}</div>
+          <div class="k">chain after erasure</div><div class="v">${r.chain.ok? 'still verifies · '+r.chain.rows+' entries':'BROKEN'}</div>
+        </div>`;
+    }catch(e){ out.innerHTML = `<div class="alert bad">${esc(e.message)}</div>`; } };
+}
+
+function bestValue(best, c){
+  if(best.expected_value_minor==null) return 'no money moves — the outcome is the change itself';
+  const minor = best.expected_value_minor, cur = c.currency;
+  const major = (cur==='JPY'||cur==='KRW') ? minor : minor/100;
+  const sym = {INR:'₹',USD:'$',GBP:'£',EUR:'€'}[cur]||'';
+  return sym + major.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) + (sym?'':' '+(cur||''));
+}
+
+function timelineRows(s){
+  const rows = (s.executions||[]).map(e=>({
+    at:e.requested_at, cls: e.verified==='verified'?'good':(e.state==='REFUSED'||e.state==='FAILED'?'':'hi'),
+    s:`${(e.action||'').replace(/_/g,' ')} — ${e.outcome||e.state.toLowerCase()}`,
+    m:[e.provider, e.provider_mode==='sandbox'?'sandbox':(e.provider_mode||''), e.external_ref||'',
+       e.verified? ('verification: '+e.verified):''].filter(Boolean).join(' · ') + (e.error? ' — '+e.error : '')
+  }));
+  if(!rows.length) return '<div class="empty">Nothing has left Agent X yet.</div>';
+  return rows.map(r=>`<div class="tl ${r.cls}"><div class="s">${esc(r.s)}</div>
+    <div class="m">${esc(when(r.at))} · ${esc(r.m)}</div></div>`).join('');
+}
+
+function fold(title, body, open=false, id=''){
+  return `<details class="disclose" ${open?'open':''} ${id?`id="${id}"`:''}>
+    <summary>${title}</summary><div class="body">${body}</div></details>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   The demonstration — five real problems, driven through the real engine.
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function renderDemo(){
+  const box = $('#demoBox'); if(!box) return;
+  let scenarios=[]; try{ scenarios = await api('/demo/scenarios'); }catch(e){ box.innerHTML=''; return; }
+  box.innerHTML = `<h2>See it work</h2>
+    <div class="card">
+      <p style="margin:0 0 6px;font-size:14.5px">Five consumer problems, run end to end against sandbox companies that
+        keep records, say no, and take days to answer. Nothing here is scripted — the transcript is what actually happened.</p>
+      <p style="margin:0 0 18px;color:var(--muted);font-size:13.5px">Sandbox actions are labelled
+        <span class="chip">sandbox</span> everywhere they appear, including on the signed receipt.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${scenarios.map(s=>`<button class="btn sm ghost" data-run="${esc(s.key)}" title="${esc(s.expect)}">${esc(s.key)} · ${esc(s.title)}</button>`).join('')}
+        <span class="spacer"></span>
+        <button class="btn sm ghost" data-clock="3">+3 days</button>
+        <button class="btn sm ghost" data-clock="7">+7 days</button>
+        <button class="btn sm ghost" id="demoReset">Reset</button>
+      </div>
+      <div id="demoOut"></div>
+    </div>`;
+
+  box.querySelectorAll('[data-run]').forEach(b=>b.onclick=async()=>{
+    const out=$('#demoOut'); out.innerHTML='<div class="working"><span class="spin"></span> running the whole case…</div>';
+    try{
+      const r = await api('/demo/run/'+b.dataset.run, {method:'POST', body:{}});
+      out.innerHTML = `
+        <div class="alert ${r.final_state==='RESOLVED'?'ok':'warn'}" style="margin-top:18px">
+          <b>${esc(r.title)}</b> — ${esc(r.final_state.replace(/_/g,' ').toLowerCase())}
+          · <a href="#/case/${esc(r.case_id)}">open ${esc(r.case_id)}</a>
+          · chain ${r.chain.rows} entries, ${r.chain.ok?'intact':'BROKEN'}
+          · receipt ${r.receipt_signed?'signed':'unsigned'}
+        </div>
+        <div class="timeline" style="margin-top:6px">
+          ${r.events.map(e=>`<div class="tl ${e.stage==='authorization'?'hi':(e.stage==='receipt'?'good':'')}">
+            <div class="s"><span class="chip" style="margin-right:8px">${esc(e.stage)}</span>${esc(e.detail)}</div>
+            ${e.message? `<div class="m">${esc(e.message)}</div>`:''}</div>`).join('')}
+        </div>`;
+      loadCases();
+    }catch(e){ out.innerHTML = `<div class="alert bad" style="margin-top:18px">${esc(e.message)}</div>`; }
+  });
+  box.querySelectorAll('[data-clock]').forEach(b=>b.onclick=async()=>{
+    try{ const r = await api('/demo/advance-clock',{method:'POST',body:{days:+b.dataset.clock}});
+      toast(`Sandbox moved to +${r.clock.offset_days} days · ${r.sweep.followups_fired} follow-up(s) fired`);
+      loadCases();
+    }catch(e){ toast(e.message); }
+  });
+  $('#demoReset').onclick=async()=>{ try{ await api('/demo/reset',{method:'POST'}); toast('Demo reset.'); loadCases(); $('#demoOut').innerHTML=''; }catch(e){ toast(e.message); } };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   HOW IT WORKS — for the sceptic, not the shopper.
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function renderHow(){
+  $('#app').innerHTML = `<div class="back"><a href="#/">← back</a></div>
+    <div class="headline"><h1>How Agent X works</h1>
+      <p class="why">Eleven stages, the same eleven for every consumer problem. What changes between an airline
+        delay and a duplicate charge is a YAML file and a provider — not a code path.</p></div>
+    <div id="howOut" class="section"><div class="working"><span class="spin"></span> loading…</div></div>`;
+  try{
+    const [onto, capa, prov, gov] = await Promise.all([
+      api('/ontology'), api('/capabilities'), api('/providers'), api('/governor')]);
+    $('#howOut').innerHTML = `
+      ${fold(`Problem catalogue — ${onto.problem_types} types across ${Object.keys(onto.domains).length} domains`, `
+        <p style="color:var(--muted);font-size:13.5px">Each is a declarative file: which entities it needs, what
+          evidence would show it, which rules apply, which remedies exist, which deadlines run, and which rival
+          readings it must be separated from. Adding a vertical means adding a file.</p>
+        <div class="scroll"><table class="plain"><thead><tr><th>Problem</th><th>Domain</th><th>Remedies</th><th>Rival readings</th></tr></thead><tbody>
+        ${onto.types.map(t=>`<tr><td><b>${esc(t.label)}</b><br><span class="mono" style="font-size:11px;color:var(--faint)">${esc(t.problem_type)}</span></td>
+          <td>${esc(t.domain)}</td><td style="color:var(--muted)">${t.remedies.map(r=>esc(r.replace(/_/g,' '))).join(', ')}</td>
+          <td>${t.ambiguity_group? `<span class="chip warn">${esc(t.ambiguity_group)}</span>`:''}</td></tr>`).join('')}
+        </tbody></table></div>`, true)}
+      ${fold(`Capabilities — ${capa.capabilities.length}, and whether each one can actually run`, `
+        <div class="scroll"><table class="plain"><thead><tr><th>Capability</th><th>Phase</th><th>Needs level</th><th>Risk</th><th>Available</th></tr></thead><tbody>
+        ${capa.capabilities.map(c=>`<tr><td><b>${esc(c.label)}</b><br><span style="color:var(--muted);font-size:12.5px">${esc(c.summary)}</span></td>
+          <td>${esc(c.phase)}</td><td>${c.required_level}</td>
+          <td><span class="chip ${c.risk==='high'?'bad':(c.risk==='medium'?'warn':'')}">${esc(c.risk)}</span></td>
+          <td><span class="chip ${c.available?'ok':'bad'}" title="${esc(c.reason||'')}">${c.available? esc(c.mode||'yes'):'no provider'}</span></td></tr>`).join('')}
+        </tbody></table></div>`)}
+      ${fold(`Providers — ${prov.count} registered, ${prov.live_providers.length} live`, `
+        <div class="alert warn">${esc(prov.note)}</div>
+        <div class="scroll"><table class="plain"><thead><tr><th>Family</th><th>Provider</th><th>Mode</th><th>Actions</th></tr></thead><tbody>
+        ${Object.entries(prov.families).flatMap(([f,ps])=>ps.map(p=>`<tr><td>${esc(f)}</td><td>${esc(p.label)}</td>
+          <td><span class="chip ${p.mode==='live'?'ok':'warn'}">${esc(p.mode)}</span></td>
+          <td class="mono" style="font-size:11.5px">${p.actions.map(esc).join(' ')}</td></tr>`)).join('')}
+        </tbody></table></div>`)}
+      ${fold('Autonomy — what Agent X may do without asking', `
+        ${gov.levels.map(l=>`<div class="claim"><div class="t"><b>Level ${l.level} · ${esc(l.name)}</b></div>
+          <div class="m">${esc(l.means)}</div></div>`).join('')}
+        <h3 style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:22px 0 10px">Rules that override the level entirely</h3>
+        <ul style="color:var(--muted);font-size:13.5px;margin:0;padding-left:20px">
+          ${gov.policy.hard_rules.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`)}`;
+  }catch(e){ $('#howOut').innerHTML = `<div class="alert bad">${esc(e.message)}</div>`; }
+}
+
+/* ── boot ──────────────────────────────────────────────────────────────── */
+(async function boot(){
+  try{ S.boot = await api('/health'); }catch(e){ S.boot = null; }
+  const chip = $('#engineChip');
+  if(S.boot){
+    const e = S.boot.engine;
+    chip.textContent = e.engine === 'cockroachdb' ? 'CockroachDB' : 'local engine';
+    chip.className = 'chip ' + (e.engine==='cockroachdb' ? 'ok' : '');
+    chip.title = 'Guarantees: ' + e.guarantees.join(' · ') +
+      (e.not_available.length ? '\n\nNot available here: ' + e.not_available.join(' · ') : '');
+    if(!S.boot.auth_required) $('#tokenBtn').classList.add('hidden');
+  } else {
+    chip.textContent = 'offline'; chip.className='chip bad';
+  }
+  render();
+})();
+</script>
+</body>
+</html>

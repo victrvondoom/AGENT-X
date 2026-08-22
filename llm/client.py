@@ -43,17 +43,50 @@ def set_config(provider: str | None = None, model: str | None = None,
 # ─────────────────────────────────────────────────────────────────────────────
 @lru_cache(maxsize=1)
 def _embedder():
-    from fastembed import TextEmbedding
+    try:
+        from fastembed import TextEmbedding
+        return TextEmbedding(model_name=EMBED_MODEL)
+    except Exception:
+        return None
 
-    return TextEmbedding(model_name=EMBED_MODEL)
+
+def _hash_embed(text: str, dim: int = 384) -> list[float]:
+    """Fast deterministic fallback vector when fastembed model is unavailable."""
+    import hashlib
+    words = (text or "").lower().split()
+    vec = [0.0] * dim
+    if not words:
+        return vec
+    for word in words:
+        h = int(hashlib.md5(word.encode("utf-8")).hexdigest(), 16)
+        idx = h % dim
+        val = ((h >> 8) % 1000) / 1000.0 - 0.5
+        vec[idx] += val
+    norm = sum(v * v for v in vec) ** 0.5
+    if norm > 0:
+        vec = [v / norm for v in vec]
+    return vec
 
 
 def embed(text: str) -> list[float]:
-    return list(map(float, next(_embedder().embed([text or ""]))))
+    emb = _embedder()
+    if emb is not None:
+        try:
+            return list(map(float, next(emb.embed([text or ""]))))
+        except Exception:
+            pass
+    return _hash_embed(text)
 
 
 def embed_batch(texts: list[str]) -> list[list[float]]:
-    return [list(map(float, v)) for v in _embedder().embed(texts)]
+    emb = _embedder()
+    if emb is not None:
+        try:
+            return [list(map(float, v)) for v in emb.embed(texts)]
+        except Exception:
+            pass
+    return [_hash_embed(t) for t in texts]
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────

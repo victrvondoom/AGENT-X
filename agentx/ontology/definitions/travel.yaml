@@ -1,0 +1,245 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Carriage of a person: flights, and what a carrier owes when it goes wrong.
+#
+# Travel is the domain where statutory entitlement most often exceeds what the
+# airline offers unprompted, so these definitions lean hard on the policy layer:
+# the difference between "a voucher" and "EUR 400 in cash" is a citation, not a
+# negotiation.
+# ═══════════════════════════════════════════════════════════════════════════
+
+problem_type: flight_delay_compensation
+domain: travel
+label: Flight delayed
+summary: >
+  A flight arrived late enough that a compensation scheme may apply. Entitlement
+  turns on arrival delay at the final destination, distance, and whether the cause
+  was within the carrier's control.
+prior: 0.16
+provider_family: airline
+phrases:
+  - flight was delayed
+  - flight delay
+  - delayed flight
+  - landed late
+  - missed my connection
+  - hours late
+  - compensation for delay
+patterns:
+  - "(delay|late).{0,30}(flight|plane|departure|arrival)"
+  - "(\\d+)\\s*(hours?|hrs?)\\s*(late|delay)"
+required_entities: [provider, booking]
+optional_entities: [date, location, person, amount]
+required_evidence:
+  - kind: booking_confirmation
+    why: Route and scheduled times are what the distance band and delay are measured against.
+    critical: true
+    satisfied_by: [boarding_pass, email, provider_record]
+  - kind: email
+    why: The carrier's own delay notice usually states the reason, which decides the extraordinary-circumstances defence.
+    critical: false
+    satisfied_by: [screenshot, provider_record]
+expected_facts:
+  - flight.number
+  - flight.scheduled_arrival
+  - flight.actual_arrival
+  - flight.delay_minutes
+  - flight.distance_km
+  - flight.disruption_reason
+discriminators:
+  - id: arrival_delay
+    question: How late did you arrive at your final destination?
+    kind: choice
+    options: ["Under 3 hours", "3 to 4 hours", "Over 4 hours", "Never arrived"]
+    why: Under three hours there is no EU261 cash entitlement at all, however annoying the delay was.
+    favours: {flight_delay_compensation: 0.3}
+    disfavours: {flight_cancelled: 0.2}
+  - id: cause_given
+    question: Did the airline give a reason for the delay?
+    kind: text
+    why: Weather and air-traffic restrictions are extraordinary circumstances; a technical fault is not.
+policies: [eu261, uk261, montreal_convention, us_dot_delay, merchant_terms]
+resolution_strategies: [statutory_compensation, partial_refund, goodwill_credit]
+escalation: [merchant_support, regulator_complaint]
+deadlines:
+  - label: EU261 claim limitation period
+    days: 2190
+    kind: statutory
+    from_event: incident
+    source: eu261
+  - label: Airline response expected
+    days: 14
+    kind: merchant_sla
+    from_event: first_contact
+risk: medium
+default_autonomy: 2
+
+---
+problem_type: flight_cancelled
+domain: travel
+label: Flight cancelled
+summary: >
+  The carrier cancelled the flight. Two separate entitlements apply and are
+  routinely conflated: a refund or re-routing, and, unless notice was long enough,
+  compensation on top.
+prior: 0.14
+provider_family: airline
+phrases:
+  - flight cancelled
+  - flight canceled
+  - they cancelled my flight
+  - airline cancelled
+  - cancelled my flight
+patterns:
+  - "(cancel).{0,20}(flight|plane)"
+required_entities: [provider, booking]
+optional_entities: [date, location, amount]
+required_evidence:
+  - kind: booking_confirmation
+    why: Establishes the contract of carriage that was not performed.
+    critical: true
+    satisfied_by: [boarding_pass, email, provider_record]
+  - kind: cancellation_notice
+    why: The notice date decides whether compensation is owed at all.
+    critical: false
+    satisfied_by: [email, screenshot, provider_record]
+expected_facts:
+  - flight.number
+  - flight.scheduled_departure
+  - cancellation.notified_at
+  - flight.distance_km
+  - rebooking.offered
+discriminators:
+  - id: notice_days
+    question: How much notice did the airline give you?
+    kind: choice
+    options: ["Less than 7 days", "7 to 13 days", "14 days or more", "Not sure"]
+    why: Fourteen days notice extinguishes the compensation entitlement while leaving the refund one intact.
+  - id: accepted_alternative
+    question: Did you accept a rebooking, take a refund, or neither?
+    kind: choice
+    options: ["Rebooked", "Refunded", "Neither yet"]
+    why: Accepting a voucher can waive a cash entitlement, so this changes the plan materially.
+policies: [eu261, uk261, us_dot_refund, montreal_convention, merchant_terms]
+resolution_strategies: [statutory_compensation, merchant_refund, rebooking]
+escalation: [merchant_support, regulator_complaint, payment_provider]
+deadlines:
+  - label: EU261 claim limitation period
+    days: 2190
+    kind: statutory
+    from_event: incident
+    source: eu261
+  - label: Refund due within 7 days of request
+    days: 7
+    kind: statutory
+    from_event: first_contact
+    source: eu261
+risk: medium
+default_autonomy: 2
+
+---
+problem_type: baggage_lost
+domain: travel
+label: Baggage lost, delayed or damaged
+summary: >
+  Checked baggage did not arrive with the passenger. Liability is capped by
+  treaty and the clock on written notice is short and unforgiving.
+prior: 0.09
+provider_family: airline
+phrases:
+  - lost my baggage
+  - lost my luggage
+  - baggage lost
+  - luggage never arrived
+  - bag didn't arrive
+  - damaged suitcase
+  - delayed baggage
+patterns:
+  - "(lost|missing|delayed|damaged).{0,20}(bag|baggage|luggage|suitcase)"
+required_entities: [provider, booking]
+optional_entities: [date, location, amount, case_ref]
+required_evidence:
+  - kind: baggage_tag
+    why: The tag number is how the carrier's own tracing system identifies the bag.
+    critical: true
+    satisfied_by: [boarding_pass, provider_record, photograph]
+  - kind: booking_confirmation
+    why: Ties the bag to a carriage contract.
+    critical: false
+    satisfied_by: [email, provider_record]
+  - kind: receipt
+    why: Replacement purchases are recoverable, but only against receipts.
+    critical: false
+expected_facts:
+  - baggage.tag
+  - baggage.reported_at
+  - flight.number
+  - baggage.status
+  - expenses.total
+discriminators:
+  - id: pir_filed
+    question: Did you file a report at the airport (a PIR) before leaving?
+    kind: choice
+    options: ["Yes", "No", "Not sure"]
+    why: A property irregularity report is the notice most carriers require, and its absence changes the whole strategy.
+policies: [montreal_convention, eu261, merchant_terms]
+resolution_strategies: [statutory_compensation, partial_refund, insurance_claim]
+escalation: [merchant_support, regulator_complaint]
+deadlines:
+  - label: Written notice for damaged baggage
+    days: 7
+    kind: statutory
+    from_event: incident
+    source: montreal_convention
+  - label: Written notice for delayed baggage
+    days: 21
+    kind: statutory
+    from_event: incident
+    source: montreal_convention
+risk: medium
+default_autonomy: 2
+
+---
+problem_type: denied_boarding
+domain: travel
+label: Denied boarding or downgrade
+summary: >
+  The passenger held a confirmed reservation and was not carried, or was moved to
+  a lower class. Involuntary denial carries the highest fixed compensation in the
+  travel domain.
+prior: 0.05
+provider_family: airline
+phrases:
+  - denied boarding
+  - overbooked
+  - bumped from the flight
+  - wouldn't let me board
+  - downgraded my seat
+required_entities: [provider, booking]
+optional_entities: [date, amount, location]
+required_evidence:
+  - kind: boarding_pass
+    why: Proves a confirmed reservation and presentation for boarding.
+    critical: true
+    satisfied_by: [booking_confirmation, provider_record]
+expected_facts:
+  - flight.number
+  - boarding.denied_reason
+  - boarding.volunteered
+  - flight.distance_km
+discriminators:
+  - id: volunteered
+    question: Did you volunteer to give up your seat, or were you denied boarding against your will?
+    kind: choice
+    options: ["I volunteered", "I was denied against my will", "Not sure"]
+    why: Volunteering converts a fixed statutory entitlement into whatever was negotiated at the gate.
+policies: [eu261, uk261, us_dot_denied_boarding]
+resolution_strategies: [statutory_compensation, rebooking, merchant_refund]
+escalation: [merchant_support, regulator_complaint]
+deadlines:
+  - label: EU261 claim limitation period
+    days: 2190
+    kind: statutory
+    from_event: incident
+    source: eu261
+risk: medium
+default_autonomy: 2

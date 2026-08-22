@@ -18,7 +18,7 @@ import socket
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, UploadFile, File, Form, Depends, Header, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -33,6 +33,8 @@ from llm import client as llm_client              # noqa: E402
 from aws import certificate as cert               # noqa: E402
 from db import store                              # noqa: E402
 
+
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATES = os.path.join(ROOT, "templates")
 STATIC = os.path.join(ROOT, "static")
@@ -46,8 +48,33 @@ app = FastAPI(title="Agent X",
 # product with two pipelines, not two products in one repository.
 from app.trustdoc import router as trustdoc_router   # noqa: E402
 app.include_router(trustdoc_router)
+
+# The consumer resolution layer. Mounted into the same application as the
+# erasure and document pipelines because it is the same product: one trust spine,
+# one signing identity, one /verify.
+from app.agentx_api import router as agentx_router    # noqa: E402
+app.include_router(agentx_router)
 if os.path.isdir(STATIC):
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+
+@app.exception_handler(store.OfflineWriteError)
+def _offline_write(request, exc: store.OfflineWriteError):
+    """503, not 500, and never a 200.
+
+    When the database is unreachable the store degrades reads to empty so the
+    UI still renders, but it now refuses writes outright rather than accepting
+    them and doing nothing. That refusal has to reach the caller as a specific,
+    honest answer: the record was not written, this is temporary, retry. A
+    generic 500 would read as a bug in the request; a 200 would be a lie about
+    a record the product's whole claim depends on.
+    """
+    return JSONResponse(status_code=503, content={
+        "error": "database_unreachable",
+        "detail": str(exc),
+        "written": False,
+        "retryable": True,
+    })
 
 
 def _ws(workspace: str | None) -> str:
@@ -98,6 +125,12 @@ def _serve(name: str, fallback: str | None = None) -> str:
     if fallback:
         return _serve(fallback)
     return "<h1>Agent X</h1><p>UI not built yet.</p>"
+
+
+@app.get("/agentx", response_class=HTMLResponse)
+def agentx_workspace():
+    """The consumer resolution workspace. `Tell Agent X what happened.`"""
+    return _serve("agentx.html")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -198,7 +231,19 @@ def learn_raw(path: str):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "service": "agent-x"}
+    """Liveness, and whether the memory engine's database is actually reachable.
+
+    `database` is reported because `store.connect()` falls back to an offline
+    stand-in so the console still renders when the cluster is unreachable. That
+    stand-in serves reads as honestly empty and REFUSES writes outright
+    (`OfflineWriteError` -> 503), so a write can no longer disappear quietly;
+    this field lets a caller see the outage before it tries.
+    """
+    with store.connect() as conn:
+        offline = store.is_offline(conn)
+    return {"ok": True, "service": "agent-x",
+            "database": "offline" if offline else "connected",
+            "writes_persist": not offline}
 
 
 # ─────────────────────────────────────────────────────────── workspaces
@@ -255,11 +300,38 @@ class AskReq(BaseModel):
     query: str
     history: list | None = None
     workspace: str = "default"
+    capability: str | None = None
+    assist_style: str | None = None
+    output_format: str | None = None
+
+
+class InspectBookingReq(BaseModel):
+    text: str
+    generate_dispute: bool = False
+    workspace: str = "default"
+
+
+class ClassifyReq(BaseModel):
+    query: str
+    has_file: bool = False
+    file_type: str | None = None
+
+
+class CreateCaseReq(BaseModel):
+    title: str
+    domain: str
+    problem_type: str
+    user_claim: str
+    evidence_text: str = ""
+    workspace: str = "default"
 
 
 class HoldReq(BaseModel):
     subject: str
-    reason: str
+    reason: str | None = None
+    # api_hold() passes this straight to set_hold(); without the field every
+    # POST /api/hold raised AttributeError. GDPR Art. 17(3) holds are commonly
+    # time-boxed, so an optional end date is part of the contract, not extra.
     until: str | None = None
     workspace: str = "default"
 
@@ -267,6 +339,170 @@ class HoldReq(BaseModel):
 class ForgetReq(BaseModel):
     subject: str
     workspace: str = "default"
+
+
+@app.post("/api/ask")
+def api_ask(r: AskReq):
+    answer, sources = ask_memory(
+        r.query,
+        r.history,
+        _ws(r.workspace),
+        capability=r.capability,
+        assist_style=r.assist_style,
+        output_format=r.output_format,
+    )
+    return {"answer": answer, "sources": sources, "capability": r.capability or "auto"}
+
+
+# ── legacy consumer routes, now backed by the real resolution engine ──────
+# These three paths predate `agentx/` and were served by keyword-heuristic
+# prototypes in core/ (booking_inspector, classifier, case_tracker). Keeping
+# those alive alongside the real engine meant TWO case systems on one codebase,
+# the weaker one reachable at /api/cases with no audit chain, no receipt and no
+# crypto-shred — directly contradicting this app's own "one trust spine" claim.
+#
+# The paths and response shapes are preserved so the existing console UI keeps
+# working; what is behind them is now the same engine `/agentx` drives. The
+# prototypes are no longer imported.
+@app.post("/api/inspect_booking")
+def api_inspect_booking(r: InspectBookingReq):
+    """Stateless triage of a pasted document. Deprecated in favour of a real
+    case at POST /api/agentx/cases, which keeps evidence, an audit chain and a
+    signed receipt rather than returning a one-shot opinion.
+
+    Now answered by the resolution engine's own classifier and policy corpus, so
+    `dispute_eligible` reflects an actually-applicable right. The prototype it
+    replaced appended a filler "anomaly" whenever it found none, which made
+    `dispute_eligible` unconditionally true and recommended a chargeback for
+    perfectly ordinary receipts.
+    """
+    from agentx import normalize, policy, understanding
+    from agentx.evidence import extract as _extract
+    from agentx.ontology import get as _get_def
+
+    u = understanding.understand(r.text, use_llm=False)
+    top = u.top
+    definition = _get_def(top.problem_type) if top else None
+
+    facts = {}
+    for f in _extract.extract(r.text, "receipt", use_llm=False):
+        facts.setdefault(f.predicate, f.value_num if f.value_num is not None
+                         else f.value_text)
+    money = normalize.money(r.text)
+    jurisdiction, _why = policy.detect_jurisdiction(
+        currency=(money or {}).get("currency"))
+    findings = policy.analyse(definition, facts, jurisdiction) if definition else []
+    applicable = [f for f in findings if f.applies == "yes"]
+
+    refs = normalize.references(r.text)
+    entities = {e["kind"]: e["value"] for e in u.entities}
+
+    audit = {
+        "merchant_category": (definition.label if definition
+                              else "Not a problem type Agent X recognises"),
+        "booking_ref": (refs[0]["value"] if refs
+                        else entities.get("booking") or entities.get("order")),
+        # Only what was actually derived. No filler.
+        "anomalies_detected": ([top.rationale.strip()] if top and top.rationale
+                               else []),
+        "consumer_rights_advisory": [f"{f.policy.title} — {f.policy.citation}"
+                                     for f in applicable],
+        # An actually-applicable right, not the presence of a placeholder string.
+        "dispute_eligible": bool(applicable),
+        "recommended_action": (
+            f"Open a case to pursue {definition.resolution_strategies[0].replace('_', ' ')}"
+            if (definition and definition.resolution_strategies and applicable)
+            else "Nothing here establishes a remedy; open a case if you have more evidence."),
+        "problem_type": top.problem_type if top else None,
+        "confidence": round(top.posterior, 3) if top else 0.0,
+        "ambiguous": u.ambiguous,
+        "deprecated": "Use POST /api/agentx/cases for an evidence-backed case.",
+    }
+
+    dispute_letter = None
+    if (r.generate_dispute or audit["dispute_eligible"]) and definition:
+        lines = [f"To: {entities.get('merchant', 'Customer Resolution Team')}",
+                 f"Re: {audit['booking_ref'] or 'the transaction below'}", "",
+                 "Dear Sir or Madam,", "",
+                 f"I am writing about {definition.label.lower()}.", ""]
+        if applicable:
+            lines.append("The basis for this request:")
+            lines += [f"  - {f.policy.title} - {f.policy.citation}" for f in applicable[:3]]
+            lines.append("")
+        lines += ["Please confirm in writing what you intend to do, and by when.",
+                  "", "Yours faithfully,", "The account holder", "",
+                  "- Prepared by Agent X. Every rule cited above was evaluated "
+                  "against the document supplied."]
+        dispute_letter = "\n".join(lines)
+
+    return {"audit": audit, "dispute_letter": dispute_letter}
+
+
+@app.post("/api/classify_intent")
+def api_classify_intent(r: ClassifyReq):
+    """Deprecated alias for POST /api/agentx/understand, which returns the full
+    posterior over problem types rather than a single guessed label."""
+    from agentx import understanding
+    u = understanding.understand(r.query, use_llm=False)
+    top = u.top
+    definition = None
+    if top:
+        from agentx.ontology import get as _get_def
+        definition = _get_def(top.problem_type)
+    return {
+        "capability": "solve" if top else "research",
+        "domain": top.domain if top else "general",
+        "problem_type": top.problem_type if top else "none",
+        "confidence": round(top.posterior, 3) if top else 0.0,
+        "ambiguous": u.ambiguous,
+        "alternatives": [{"problem_type": h.problem_type,
+                          "posterior": round(h.posterior, 3)}
+                         for h in u.hypotheses[1:4]],
+        "requires_evidence": bool(definition and definition.required_evidence),
+        "autonomy_level": definition.default_autonomy if definition else 0,
+        "deprecated": "Use POST /api/agentx/understand for the full distribution.",
+    }
+
+
+@app.get("/api/cases")
+def api_list_cases(workspace: str = "default"):
+    """Deprecated alias for GET /api/agentx/cases. Serves REAL cases — the ones
+    with an audit chain, a receipt and a crypto-shreddable subject."""
+    from agentx import case as _case
+    from agentx import store as _axstore
+    _axstore.ensure_schema()
+    with _axstore.connect() as conn:
+        rows = _case.list_cases(conn, workspace=_ws(workspace))
+    return {"cases": [{"case_id": c["id"], "title": c["title"],
+                       "domain": c["domain"], "problem_type": c["problem_type"],
+                       "status": c["state"].lower(), "created_at": c["created_at"]}
+                      for c in rows],
+            "deprecated": "Use GET /api/agentx/cases."}
+
+
+@app.post("/api/cases")
+def api_create_case(r: CreateCaseReq, _: None = Depends(require_auth)):
+    """Deprecated alias for POST /api/agentx/cases. Opens a real case: chained,
+    sealed, and erasable with proof — none of which the prototype this replaced
+    could do."""
+    from agentx import engine as _engine
+    from agentx import store as _axstore
+    _axstore.ensure_schema()
+    text = (r.user_claim or r.title or "").strip()
+    if r.evidence_text:
+        text = f"{text}\n\n{r.evidence_text}".strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="tell Agent X what happened")
+    with _axstore.connect() as conn:
+        snap = _engine.intake(conn, description=text, workspace=_ws(r.workspace),
+                              use_llm=False)
+    c = snap["case"]
+    return {"case_id": c["id"], "title": c["title"], "domain": c["domain"],
+            "problem_type": c["problem_type"], "status": c["state"].lower(),
+            "created_at": c["created_at"],
+            "deprecated": "Use POST /api/agentx/cases."}
+
+
 
 
 @app.post("/api/ingest")
@@ -296,13 +532,8 @@ async def api_upload(file: UploadFile = File(...), subject: str = Form(""),
                             detail="this subject was permanently erased; the name cannot be re-onboarded")
 
 
-@app.post("/api/ask")
-def api_ask(r: AskReq):
-    answer, sources = ask_memory(r.query, r.history, _ws(r.workspace))
-    return {"answer": answer, "sources": sources}
-
-
 @app.get("/source/{name}")
+
 def source(name: str, workspace: str = "default"):
     """The original document(s) behind a cited entity. Ledger-gated: after a forget the subject's
     key is crypto-shredded, so decryption fails and the source vanishes — the citation cannot

@@ -1,0 +1,151 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Accommodation and booked slots.
+# ═══════════════════════════════════════════════════════════════════════════
+
+problem_type: hotel_booking_cancelled
+domain: hospitality
+label: Accommodation cancelled by the property
+summary: >
+  The property or platform cancelled a confirmed booking, usually close to arrival.
+  The loss is not just the room rate — it is the cost of the replacement.
+prior: 0.13
+provider_family: hotel
+phrases:
+  - hotel cancelled
+  - hotel canceled
+  - they cancelled my booking
+  - cancelled my reservation
+  - airbnb cancelled
+  - property cancelled
+  - room was not available
+  - walked me to another hotel
+patterns:
+  - "(hotel|property|host|airbnb|booking).{0,25}cancel"
+required_entities: [merchant, booking]
+optional_entities: [provider, date, location, amount, payment]
+required_evidence:
+  - kind: booking_confirmation
+    why: The confirmed rate and dates are the baseline any replacement cost is measured against.
+    critical: true
+    satisfied_by: [email, receipt, provider_record]
+  - kind: cancellation_notice
+    why: Who cancelled, when, and on what stated ground.
+    critical: true
+    satisfied_by: [email, screenshot, provider_record]
+  - kind: receipt
+    why: The replacement booking, if one was needed — this is where most of the loss lives.
+    critical: false
+    satisfied_by: [invoice, transaction]
+expected_facts:
+  - booking.reference
+  - booking.checkin
+  - booking.rate
+  - cancellation.by
+  - cancellation.at
+  - replacement.cost
+discriminators:
+  - id: who_cancelled
+    question: Did the property cancel, or did you?
+    kind: choice
+    options: ["The property or platform cancelled", "I cancelled", "It is unclear"]
+    why: A user-initiated cancellation is governed by the rate's cancellation policy; a property-initiated one is a breach.
+    favours: {hotel_booking_cancelled: 0.45}
+    disfavours: {}
+  - id: rebooked_cost
+    question: Did you have to book somewhere else, and what did it cost?
+    kind: text
+    why: The difference in price is normally the recoverable loss, not the original rate.
+policies: [uk_cra_2015, eu_package_travel, merchant_terms, card_scheme_chargeback, in_consumer_protection_2019]
+resolution_strategies: [merchant_refund, partial_refund, rebooking, statutory_compensation, payment_dispute]
+escalation: [merchant_support, platform_support, payment_provider, regulator_complaint]
+deadlines:
+  - label: Platform dispute window
+    days: 60
+    kind: merchant_sla
+    from_event: incident
+  - label: Card scheme dispute window
+    days: 120
+    kind: scheme
+    from_event: incident
+    source: card_scheme_chargeback
+risk: medium
+default_autonomy: 2
+
+---
+problem_type: hotel_hidden_fees
+domain: hospitality
+label: Fees not disclosed at booking
+summary: >
+  Resort, cleaning, service or city fees added at or after check-in that were not
+  in the price the user agreed to.
+prior: 0.08
+provider_family: hotel
+phrases:
+  - resort fee
+  - cleaning fee
+  - hidden fee
+  - extra charges at checkout
+  - service charge added
+  - they added fees
+  - more than the quoted price
+patterns:
+  - "(resort|cleaning|service|city|convenience)\\s+fee"
+required_entities: [merchant, booking]
+optional_entities: [amount, payment, date]
+required_evidence:
+  - kind: booking_confirmation
+    why: The price the user agreed to is the reference point for anything added later.
+    critical: true
+    satisfied_by: [email, screenshot, order_page]
+  - kind: invoice
+    why: The final folio shows what was actually charged and under what line labels.
+    critical: true
+    satisfied_by: [receipt, transaction, bank_statement]
+expected_facts:
+  - booking.quoted_total
+  - invoice.total
+  - fee.items
+  - fee.total
+policies: [uk_cra_2015, us_ftc_junk_fees, merchant_terms, in_consumer_protection_2019]
+resolution_strategies: [partial_refund, bill_correction, payment_dispute]
+escalation: [merchant_support, platform_support, payment_provider, regulator_complaint]
+deadlines:
+  - label: Card scheme dispute window
+    days: 120
+    kind: scheme
+    from_event: incident
+    source: card_scheme_chargeback
+risk: medium
+default_autonomy: 2
+
+---
+problem_type: appointment_cancelled
+domain: appointments
+label: Appointment cancelled or missed by the provider
+summary: >
+  A booked slot the provider did not honour — a clinic, a tradesperson, a service
+  visit — where the loss is usually a wasted day rather than a fee.
+prior: 0.05
+provider_family: merchant
+phrases:
+  - they cancelled my appointment
+  - no one turned up
+  - didn't show up
+  - missed appointment
+  - rescheduled without telling me
+required_entities: [merchant]
+optional_entities: [booking, date, location, amount]
+required_evidence:
+  - kind: booking_confirmation
+    why: Confirms a slot existed and when.
+    critical: true
+    satisfied_by: [email, screenshot, provider_record]
+expected_facts:
+  - appointment.at
+  - appointment.status
+  - notice.given
+policies: [uk_cra_2015, merchant_terms]
+resolution_strategies: [merchant_refund, goodwill_credit, rebooking, explanation]
+escalation: [merchant_support, regulator_complaint]
+risk: low
+default_autonomy: 2

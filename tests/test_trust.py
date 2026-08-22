@@ -24,7 +24,16 @@ from core.trust import audit, certificate, gate          # noqa: E402
 from pipelines.document import generate                   # noqa: E402
 
 DSN = os.environ.get("DATABASE_URL")
-needs_db = pytest.mark.skipif(not DSN, reason="DATABASE_URL not set")
+# .env.example ships DATABASE_URL as an unfilled template
+# (postgresql://USER:PASSWORD@HOST:...) so `python-dotenv` loads something
+# non-empty even when nobody has pointed it at a real cluster yet. Treating that
+# placeholder as "set" broke the one guarantee this module promises: it doesn't
+# fail red for a developer with no database, it skips. `not DSN` let a template
+# value through and turned a clean skip into a real connection attempt against
+# the literal host "HOST".
+_UNFILLED = DSN and ("USER:PASSWORD@HOST" in DSN or "@HOST:" in DSN)
+needs_db = pytest.mark.skipif(not DSN or _UNFILLED,
+                              reason="DATABASE_URL not set (or still the template)")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

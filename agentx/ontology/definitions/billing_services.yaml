@@ -1,0 +1,232 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Bills, metered services, and work that was paid for but not done.
+#
+# `bill_unclear` is deliberately in here rather than treated as a chat question.
+# "I don't understand this bill" is a real consumer problem with a real remedy —
+# an itemised explanation, and often a correction once someone actually reads it —
+# and routing it to a chatbot is how a genuine overcharge goes unnoticed.
+# ═══════════════════════════════════════════════════════════════════════════
+
+problem_type: telecom_bill_dispute
+domain: telecom
+label: Mobile or broadband bill disputed
+summary: >
+  A bill higher than the plan, usually from out-of-bundle usage, a mid-contract
+  price rise, or a service that was never activated.
+prior: 0.09
+provider_family: telecom
+phrases:
+  - phone bill
+  - mobile bill
+  - broadband bill
+  - data charges
+  - roaming charges
+  - out of bundle
+  - my bill went up
+  - price increase mid contract
+patterns:
+  - "(bill|charge).{0,25}(higher|more than|went up|increase)"
+required_entities: [provider, account]
+optional_entities: [amount, date, payment]
+required_evidence:
+  - kind: invoice
+    why: The itemised bill is where an out-of-bundle line either exists or does not.
+    critical: true
+    satisfied_by: [bank_statement, screenshot, provider_record]
+  - kind: policy_document
+    why: The contract states the plan allowance and the price-rise clause.
+    critical: false
+    satisfied_by: [terms, email]
+expected_facts:
+  - invoice.total
+  - invoice.period
+  - plan.allowance
+  - usage.overage
+  - price_rise.notified_at
+policies: [uk_ofcom_gc, uk_cra_2015, merchant_terms, in_consumer_protection_2019]
+resolution_strategies: [bill_correction, partial_refund, goodwill_credit, cancellation]
+escalation: [merchant_support, regulator_complaint, ombudsman]
+deadlines:
+  - label: Provider response before ombudsman referral
+    days: 56
+    kind: scheme
+    from_event: first_contact
+    source: uk_ofcom_gc
+risk: low
+default_autonomy: 2
+
+---
+problem_type: utility_bill_dispute
+domain: utilities
+label: Energy or water bill disputed
+summary: >
+  A regulated-supply bill the user believes is wrong: an estimated read, a
+  catch-up bill for an old period, or a tariff that was not the one agreed.
+prior: 0.07
+provider_family: telecom
+phrases:
+  - energy bill
+  - electricity bill
+  - gas bill
+  - water bill
+  - estimated reading
+  - back billing
+  - catch up bill
+  - meter reading wrong
+patterns:
+  - "(estimat|back.?bill).{0,25}(bill|read|charge)"
+required_entities: [provider, account]
+optional_entities: [amount, date, location]
+required_evidence:
+  - kind: invoice
+    why: The bill's read type (estimated or actual) and period are the entire question.
+    critical: true
+    satisfied_by: [screenshot, provider_record]
+  - kind: photograph
+    why: A dated meter photograph beats an estimate.
+    critical: false
+    satisfied_by: [screenshot]
+expected_facts:
+  - invoice.total
+  - invoice.period
+  - meter.read_type
+  - meter.reading
+  - tariff.name
+policies: [uk_ofgem_backbilling, uk_cra_2015, merchant_terms]
+resolution_strategies: [bill_correction, partial_refund, goodwill_credit, explanation]
+escalation: [merchant_support, regulator_complaint, ombudsman]
+deadlines:
+  - label: Supplier response before ombudsman referral
+    days: 56
+    kind: scheme
+    from_event: first_contact
+    source: uk_ofgem_backbilling
+risk: low
+default_autonomy: 2
+
+---
+problem_type: bill_unclear
+domain: billing
+label: Bill not understood
+summary: >
+  The user cannot tell what they are being charged for. The remedy is an itemised
+  explanation traced to the bill itself — and often a correction, because a line
+  nobody can explain is frequently a line that should not be there.
+prior: 0.08
+provider_family: merchant
+phrases:
+  - understand this bill
+  - understand my bill
+  - what is this charge
+  - what am i paying for
+  - explain this bill
+  - explain my bill
+  - confusing bill
+  - what does this line mean
+  - make sense of this bill
+patterns:
+  - "(what|why).{0,20}(is this|am i).{0,20}(charge|bill|fee)"
+  - "(don.t|do not|can.t|cannot).{0,15}understand.{0,15}(bill|charge|invoice|statement)"
+required_entities: [merchant]
+optional_entities: [account, amount, date, payment]
+required_evidence:
+  - kind: invoice
+    why: There is nothing to explain without the document itself.
+    critical: true
+    satisfied_by: [receipt, screenshot, bank_statement, transaction]
+expected_facts:
+  - invoice.total
+  - invoice.period
+  - invoice.line_items
+policies: [uk_cra_2015, merchant_terms]
+resolution_strategies: [explanation, bill_correction, partial_refund]
+escalation: [merchant_support]
+risk: low
+default_autonomy: 1
+
+---
+problem_type: price_discrepancy
+domain: billing
+label: Charged more than the quoted price
+summary: >
+  The amount taken does not match the price shown at the point of sale.
+prior: 0.07
+provider_family: merchant
+phrases:
+  - charged more than
+  - price was different
+  - quoted price
+  - advertised price
+  - more than i agreed
+  - wrong amount charged
+patterns:
+  - "(charged|billed|took).{0,20}(more|higher|different)"
+required_entities: [merchant, payment]
+optional_entities: [order, amount, date]
+required_evidence:
+  - kind: screenshot
+    why: The advertised or quoted price at the moment of purchase.
+    critical: true
+    satisfied_by: [order_page, order_confirmation, email, receipt]
+  - kind: transaction
+    why: What was actually taken.
+    critical: true
+    satisfied_by: [bank_statement, invoice]
+expected_facts:
+  - quoted.amount
+  - charge.amount
+  - charge.date
+policies: [uk_cra_2015, us_ftc_junk_fees, card_scheme_chargeback, merchant_terms]
+resolution_strategies: [partial_refund, bill_correction, payment_dispute]
+escalation: [merchant_support, payment_provider, regulator_complaint]
+risk: medium
+default_autonomy: 2
+
+---
+problem_type: service_not_delivered
+domain: services
+label: Paid-for work not done
+summary: >
+  A tradesperson or service provider took payment and did not perform, performed
+  badly, or abandoned the job part-way.
+prior: 0.06
+provider_family: merchant
+phrases:
+  - never did the work
+  - job not finished
+  - took my deposit
+  - never came back
+  - botched the job
+  - paid for a service
+patterns:
+  - "(deposit|paid).{0,25}(never|didn.t|no work)"
+required_entities: [merchant]
+optional_entities: [amount, payment, date, location]
+required_evidence:
+  - kind: receipt
+    why: Proof of payment, and what it was for.
+    critical: true
+    satisfied_by: [invoice, transaction, bank_statement]
+  - kind: photograph
+    why: The state of the work, where there is any.
+    critical: false
+  - kind: chat_transcript
+    why: What was agreed, in writing.
+    critical: false
+    satisfied_by: [email, screenshot]
+expected_facts:
+  - payment.amount
+  - payment.date
+  - work.agreed
+  - work.delivered
+policies: [uk_cra_2015, uk_cca_s75, in_consumer_protection_2019, merchant_terms]
+resolution_strategies: [merchant_refund, partial_refund, repair, payment_dispute]
+escalation: [merchant_support, payment_provider, regulator_complaint]
+deadlines:
+  - label: Card scheme dispute window
+    days: 120
+    kind: scheme
+    from_event: incident
+    source: card_scheme_chargeback
+risk: medium
+default_autonomy: 2

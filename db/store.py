@@ -17,6 +17,7 @@ load-bearing guarantee behind "provably forgotten" — deletion alone leaves rec
 from __future__ import annotations
 
 import os
+import re as _re
 import atexit
 import base64
 from contextlib import contextmanager
@@ -37,25 +38,146 @@ if not DATABASE_URL:
 _pool: ConnectionPool | None = None
 
 
+class OfflineWriteError(RuntimeError):
+    """Raised when a write is attempted while the database is unreachable.
+
+    This exists because the alternative is worse. The offline fallback below
+    used to accept every statement and do nothing, which meant a POST that
+    sealed a document, recorded a consent decision or appended an audit-chain
+    row returned 200 OK having written nothing at all. A product whose entire
+    claim is "there is a verifiable record of what happened" cannot afford a
+    code path that silently produces no record. Reads may degrade to empty —
+    an empty list is honestly empty. Writes may not.
+    """
+
+
+# Statements that change state. Anything not in this set is treated as a read
+# and allowed to return nothing while the database is unreachable.
+_WRITE_VERBS = frozenset({
+    "insert", "update", "delete", "upsert", "merge", "create", "alter", "drop",
+    "truncate", "grant", "revoke", "comment", "import", "restore", "begin",
+    "commit", "rollback", "set",
+})
+
+
+def _is_write(stmt) -> bool:
+    """Best-effort read/write classification of a SQL statement."""
+    text = (stmt if isinstance(stmt, str) else str(stmt)).lstrip()
+    # strip leading line and block comments before reading the verb
+    while True:
+        if text.startswith("--"):
+            nl = text.find("\n")
+            text = text[nl + 1:].lstrip() if nl != -1 else ""
+        elif text.startswith("/*"):
+            close = text.find("*/")
+            text = text[close + 2:].lstrip() if close != -1 else ""
+        else:
+            break
+    if not text:
+        return False
+    verb = _re.split(r"[\s(;]", text, 1)[0].lower()
+    if verb == "with":
+        # CTEs are reads unless the body writes: WITH x AS (...) INSERT INTO ...
+        return bool(_re.search(r"\b(insert|update|delete|upsert)\b", text, _re.I))
+    return verb in _WRITE_VERBS
+
+
+class MockCursor:
+    """Read-only stand-in used when the database cannot be reached."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+    def execute(self, stmt, params=None):
+        if _is_write(stmt):
+            raise OfflineWriteError(
+                "the database is unreachable, so this write was not performed. "
+                "Agent X refuses to report success for a record it did not "
+                "write. Check DATABASE_URL and that your CockroachDB cluster is "
+                "reachable, then retry. (statement: "
+                f"{str(stmt)[:60].strip()}...)")
+
+    def fetchone(self):
+        return None
+
+    def fetchall(self):
+        return []
+
+
+class MockConnection:
+    def cursor(self):
+        return MockCursor()
+
+    def commit(self):
+        pass
+
+
 def pool() -> ConnectionPool:
-    """Process-wide connection pool (one TLS handshake amortized across requests)."""
+    """Process-wide connection pool with fast timeout and lazy open."""
     global _pool
     if _pool is None:
         _pool = ConnectionPool(
             DATABASE_URL,
-            min_size=1,
-            max_size=8,
-            kwargs={"autocommit": True},
-            open=True,
+            min_size=0,
+            max_size=4,
+            kwargs={"autocommit": True, "connect_timeout": 2},
+            open=False,
+            timeout=2.0,
         )
     return _pool
 
 
 @contextmanager
 def connect():
-    """Borrow a pooled connection."""
-    with pool().connection() as conn:
+    """Borrow a pooled connection, falling back to MockConnection if the database
+    is offline so the demo UI still renders.
+
+    The acquire is wrapped, the YIELD is not. Wrapping the yield in the same
+    `try` meant any exception raised inside the caller's `with store.connect()`
+    block — a constraint violation, a bug in application code — was thrown back
+    into this generator at the yield point, caught by the blanket `except`, and
+    answered by yielding a SECOND time. A generator that yields twice from one
+    contextmanager raises `RuntimeError: generator didn't stop after throw()`,
+    which replaced the caller's real exception with an unrelated one and defeated
+    any targeted `except` around the block.
+
+    The fallback is READ-ONLY. Reads return honestly empty; any write raises
+    `OfflineWriteError`, which `app/main.py` answers as a 503 carrying
+    `written: false`. It used to accept writes and do nothing, which meant a
+    sealed document or an audit-chain append could return 200 OK having written
+    nothing — the one failure mode this product cannot have. Callers that need
+    to check first can use `is_offline`; the resolution engine in
+    `agentx/store.py` refuses this fallback entirely.
+    """
+    conn = None
+    try:
+        p = pool()
+        if not getattr(p, "_opened", True) and hasattr(p, "open"):
+            try:
+                p.open(wait=False)
+            except Exception:
+                pass
+        cm = p.connection(timeout=1.5)
+        conn = cm.__enter__()
+    except Exception:
+        cm, conn = None, MockConnection()
+
+    if cm is None:
         yield conn
+        return
+    with cm:
+        yield conn
+
+
+def is_offline(conn) -> bool:
+    """True when `conn` is the offline stand-in rather than a real connection."""
+    return isinstance(conn, MockConnection)
+
+
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────

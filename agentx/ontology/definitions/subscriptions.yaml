@@ -1,0 +1,203 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Recurring plans: renewals, cancellation friction, and memberships.
+#
+# `subscription_renewal_unexpected` carries the `repeat_charge` ambiguity group
+# because it is a rival reading of the same sentence handled in finance_charges —
+# a renewal is genuinely indistinguishable from a duplicate until you know how far
+# apart the two charges were.
+# ═══════════════════════════════════════════════════════════════════════════
+
+problem_type: subscription_renewal_unexpected
+domain: subscriptions
+label: Subscription renewed unexpectedly
+summary: >
+  A recurring plan auto-renewed without the user realising, typically after a
+  trial or a yearly cycle they had forgotten.
+prior: 0.20
+ambiguity_group: repeat_charge
+provider_family: subscription
+phrases:
+  - renewed without
+  - auto renewed
+  - auto-renewed
+  - didn't realise it renewed
+  - free trial ended
+  - trial charged me
+  - annual renewal
+  - subscription charged
+  - i thought i cancelled
+patterns:
+  - "(renew|renewal).{0,25}(without|didn.t|forgot|unaware)"
+required_entities: [merchant, subscription, payment]
+optional_entities: [account, amount, date]
+required_evidence:
+  - kind: transaction
+    why: Establishes what was taken and when the cycle turned.
+    critical: true
+    satisfied_by: [bank_statement, receipt]
+  - kind: email
+    why: Renewal notice (or its absence) decides whether the merchant met its notice duty.
+    critical: false
+    satisfied_by: [screenshot, terms]
+expected_facts:
+  - charge.amount
+  - charge.date
+  - subscription.plan
+  - subscription.renewed_at
+  - notice.sent_at
+discriminators:
+  - id: cycle_gap
+    question: How long was it between this charge and the previous one?
+    kind: choice
+    options: ["Same day or next day", "About a month", "About a year", "Not sure"]
+    why: A monthly or yearly gap is a renewal; a same-day gap is a duplicate.
+    favours: {subscription_renewal_unexpected: 0.4}
+    disfavours: {duplicate_charge: 0.35, authorization_hold: 0.2}
+  - id: used_since_renewal
+    question: Have you used the service since this renewal?
+    kind: choice
+    options: ["No, not at all", "A little", "Yes, regularly"]
+    why: Unused-since-renewal is the strongest argument for a full refund rather than a pro-rata one.
+    favours: {}
+    disfavours: {}
+policies: [us_rosca_click_to_cancel, uk_ccr_2013, uk_cra_2015, merchant_terms, card_scheme_chargeback]
+resolution_strategies: [merchant_refund, cancellation, partial_refund, payment_dispute]
+escalation: [merchant_support, payment_provider, regulator_complaint]
+deadlines:
+  - label: Cooling-off period for distance contracts
+    days: 14
+    kind: statutory
+    from_event: incident
+    source: uk_ccr_2013
+  - label: Merchant response expected
+    days: 5
+    kind: merchant_sla
+    from_event: first_contact
+risk: medium
+default_autonomy: 2
+
+---
+problem_type: subscription_cancellation_blocked
+domain: subscriptions
+label: Cannot cancel a subscription
+summary: >
+  The user wants out and the merchant has made leaving harder than joining —
+  no cancel button, a retention maze, or a phone-only route.
+prior: 0.14
+ambiguity_group: cancellation_intent
+provider_family: subscription
+phrases:
+  - can't cancel
+  - cant cancel
+  - won't let me cancel
+  - no cancel button
+  - keeps charging me
+  - cancel my subscription
+  - stop the subscription
+  - unsubscribe
+patterns:
+  - "(cancel|stop).{0,20}(subscription|membership|plan|service)"
+required_entities: [merchant, subscription]
+optional_entities: [account, payment, amount]
+required_evidence:
+  - kind: screenshot
+    why: Shows what the cancellation flow actually offered, which is the substance of a click-to-cancel complaint.
+    critical: false
+    satisfied_by: [order_page, chat_transcript, email]
+  - kind: transaction
+    why: Confirms the plan is live and what it costs.
+    critical: false
+    satisfied_by: [bank_statement, receipt]
+expected_facts:
+  - subscription.plan
+  - subscription.next_charge
+  - cancellation.route
+discriminators:
+  - id: tried_to_cancel
+    question: Have you already tried to cancel, and been unable to?
+    kind: choice
+    options: ["Yes, I tried and could not", "No, I have not tried yet", "Not sure"]
+    why: >
+      A blocked cancellation is a regulatory complaint about the cancellation
+      mechanism; a first attempt is simply an action to carry out. The plans are
+      completely different, and this one question separates them.
+    favours: {subscription_cancellation_blocked: 0.4}
+    disfavours: {cancel_service: 0.4}
+policies: [us_rosca_click_to_cancel, uk_ccr_2013, merchant_terms]
+resolution_strategies: [cancellation, merchant_refund, partial_refund]
+escalation: [merchant_support, regulator_complaint]
+deadlines:
+  - label: Cancel before the next billing date
+    days: 30
+    kind: merchant_sla
+    from_event: incident
+risk: medium
+default_autonomy: 2
+
+---
+problem_type: membership_auto_renewal
+domain: memberships
+label: Membership renewed automatically
+summary: >
+  A gym, club or association membership rolled over into a new term, often with a
+  minimum-term clause the user did not expect.
+prior: 0.08
+provider_family: subscription
+phrases:
+  - gym membership
+  - membership renewed
+  - minimum term
+  - annual membership
+  - club membership
+  - notice period
+required_entities: [merchant, subscription]
+optional_entities: [account, payment, amount, date]
+required_evidence:
+  - kind: policy_document
+    why: Membership terms carry the notice period, which decides whether the rollover was lawful.
+    critical: false
+    satisfied_by: [terms, email]
+  - kind: transaction
+    why: What was taken, and when.
+    critical: true
+    satisfied_by: [bank_statement, invoice]
+expected_facts:
+  - membership.term
+  - membership.notice_days
+  - charge.amount
+policies: [uk_cra_2015, uk_ccr_2013, merchant_terms]
+resolution_strategies: [cancellation, partial_refund, merchant_refund]
+escalation: [merchant_support, regulator_complaint]
+risk: medium
+default_autonomy: 2
+
+---
+problem_type: cancel_service
+domain: subscriptions
+label: Cancel a service
+summary: >
+  A straightforward request to end a service, with no dispute attached. Kept as
+  its own type because the correct plan is an execution, not an argument.
+prior: 0.10
+ambiguity_group: cancellation_intent
+provider_family: subscription
+phrases:
+  - i want to cancel
+  - cancel this service
+  - end my contract
+  - close my account
+  - terminate my plan
+required_entities: [merchant]
+optional_entities: [account, subscription, payment]
+required_evidence:
+  - kind: statement_note
+    why: What the user wants cancelled and from when — no documentary evidence is needed to leave a service.
+    critical: false
+expected_facts:
+  - subscription.plan
+  - cancellation.effective_from
+policies: [us_rosca_click_to_cancel, uk_ccr_2013, merchant_terms]
+resolution_strategies: [cancellation]
+escalation: [merchant_support]
+risk: medium
+default_autonomy: 2

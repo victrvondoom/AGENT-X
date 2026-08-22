@@ -148,8 +148,16 @@ footer{border-top:1px solid var(--hair);padding:4rem 0 3rem;text-align:center}
   user-select:none}
 /* On paper the chrome inverts: the bevel must start dark or the top of every
    glyph disappears into the background, and the bloom becomes a cast shadow. */
-:root[data-theme="day"] .mark{
-  background:linear-gradient(180deg,#9d9a92 0%,#4a4842 15%,#8e8b83 32%,#2a2823 48%,#b4b1a8 60%,#63605a 76%,rgba(150,147,140,0) 96%);
+#fixedBgMark{position:fixed;inset:0;z-index:0;pointer-events:none;display:flex;align-items:center;justify-content:flex-start;padding-left:clamp(1.5rem,8vw,10rem);opacity:.28}
+
+.mark-fixed{font-family:'Instrument Serif',Georgia,serif;font-size:clamp(4.5rem,18vw,13rem);font-style:italic;font-weight:400;line-height:.85;letter-spacing:-.03em;
+  background:linear-gradient(180deg,#fff 0%,#efeee9 16%,#b9b7b0 36%,#6e6d68 50%,#f6f5f1 60%,#cfcdc6 76%,rgba(200,198,192,.4) 96%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 -1px 0 rgba(255,255,255,.5)) drop-shadow(0 1px 0 rgba(0,0,0,.55))
+         drop-shadow(0 6px 16px rgba(0,0,0,.55)) drop-shadow(0 0 44px rgba(255,255,255,.28));
+  user-select:none;white-space:nowrap}
+:root[data-theme="day"] .mark-fixed{
+  background:linear-gradient(180deg,#9d9a92 0%,#4a4842 15%,#8e8b83 32%,#2a2823 48%,#b4b1a8 60%,#63605a 76%,rgba(150,147,140,.3) 96%);
   -webkit-background-clip:text;background-clip:text;
   filter:drop-shadow(0 1px 0 rgba(255,255,255,.85)) drop-shadow(0 -1px 0 rgba(27,26,23,.30))
          drop-shadow(0 5px 12px rgba(27,26,23,.22)) drop-shadow(0 0 30px rgba(27,26,23,.10))}
@@ -165,7 +173,11 @@ footer{border-top:1px solid var(--hair);padding:4rem 0 3rem;text-align:center}
 
 <!-- WebGL scene, or the SVG fallback on low-tier devices -->
 <canvas id="gl"></canvas>
+<div id="fixedBgMark">
+  <div class="mark-fixed serif" aria-hidden="true">Agent X</div>
+</div>
 <svg id="fallback" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+
   <defs>
     <radialGradient id="fbGlow" cx="50%" cy="46%" r="42%">
       <stop offset="0%" stop-color="#ffffff" stop-opacity=".16"/><stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
@@ -792,8 +804,9 @@ function buildGlobe(THREE, opts = {}){
   };
 }
 
-const GLOBE = buildGlobe(THREE, {radius:1.32, density:180});
-GLOBE.group.position.set(1.72, 0.05, -0.4);   /* staged right, copy column stays clear */
+const GLOBE = buildGlobe(THREE, {radius:1.75, density:195});
+GLOBE.group.position.set(1.85, 0.05, -0.4);   /* staged right, copy column stays clear */
+
 GLOBE.dotMat.uniforms.uPixelRatio.value = renderer.getPixelRatio();
 GLOBE.mMat.uniforms.uPixelRatio.value   = renderer.getPixelRatio();
 scene.add(GLOBE.group);
@@ -863,56 +876,18 @@ const chaos = field(620, CHAOS_VS, CHAOS, (i,pos,seed)=>{
   pos[i*3+2] = -1.2 + Math.random()*2.4;
   seed[i] = Math.random();
 });
-const order = field(560, ORDER_VS, ORDER, (i,pos,seed,lane)=>{
-  pos[i*3]=0; pos[i*3+1]=0; pos[i*3+2]=0;
-  seed[i] = Math.random();
-  lane[i] = i % 4;
-});
-scene.add(chaos, order);
+scene.add(chaos);
 
-/* ── destination nodes ── */
-const NODES = ["Claude","GPT-4","Internal-Tool","Audit-Log"];
-const nodeMeshes = [], nodeLights = [];
-NODES.forEach((_,i)=>{
-  const s = new THREE.Mesh(
-    new THREE.SphereGeometry(.085,20,20),
-    new THREE.MeshBasicMaterial({color:ORDER, transparent:true, opacity:.92})
-  );
-  s.position.set(4.6, i*0.42-0.63, 0);
-  scene.add(s); nodeMeshes.push(s);
-  const pl = new THREE.PointLight(ORDER, 2.2, 2.2);
-  pl.position.copy(s.position); scene.add(pl); nodeLights.push(pl);
-});
-
-/* ── camera choreography: 5 waypoints, lerped, with an orbital arc mid-page ── */
+/* ── camera choreography: fixed anchor point so globe rotates in place on scroll ── */
 const STAGES = [
   {at:0.00, pos:[ 1.4,0.5,5.4], look:[ 0.3,0,0]},
-  {at:0.22, pos:[ 3.2,0.3,6.8], look:[-1.8,0,0]},   // pan left, into the chaos
-  {at:0.48, pos:[ 0.0,0.6,6.2], look:[ 0.0,0,0]},   // centre, orbital sweep
-  {at:0.74, pos:[-2.8,0.2,6.6], look:[ 1.8,0,0]},   // pan right, into the order
-  {at:1.00, pos:[ 0.2,0.7,8.2], look:[ 0.0,0,0]},   // pull back
 ];
-const _p = new THREE.Vector3(), _l = new THREE.Vector3();
+const _p = new THREE.Vector3(1.4, 0.5, 5.4), _l = new THREE.Vector3(0.3, 0, 0);
 function sample(p){
-  let a = STAGES[0], b = STAGES[STAGES.length-1];
-  for(let i=0;i<STAGES.length-1;i++){
-    if(p >= STAGES[i].at && p <= STAGES[i+1].at){ a = STAGES[i]; b = STAGES[i+1]; break; }
-  }
-  const span = b.at - a.at;
-  const t = span > 0 ? (p - a.at)/span : 0;
-  const e = t*t*(3-2*t);                                   // smoothstep between waypoints
-  _p.set(a.pos[0]+(b.pos[0]-a.pos[0])*e, a.pos[1]+(b.pos[1]-a.pos[1])*e, a.pos[2]+(b.pos[2]-a.pos[2])*e);
-  _l.set(a.look[0]+(b.look[0]-a.look[0])*e, a.look[1]+(b.look[1]-a.look[1])*e, a.look[2]+(b.look[2]-a.look[2])*e);
-  if(p > 0.30 && p < 0.65){                                 // extra orbital arc through the middle
-    _p.x += Math.sin((p-0.30)/0.35 * Math.PI) * 1.4;
-  }
   return {pos:_p, look:_l};
 }
 
-/* ── retune the scene for day / night ──
-   Day is not a colour swap. Additive blending adds light, which does nothing on
-   a bright ground, so the fields switch to normal blending with darkened inks;
-   the glass loses its glow and gains a dark edge so it still reads as a facet. */
+/* ── retune the scene for day / night ── */
 const PALETTE = {
   night:{ fog:0x08080a, env:0x101014, ambient:0.6,  exposure:1.15,
           chaos:'#f2e4cc', order:'#dce9ff', edge:0xffffff, edgeOp:0.62,
@@ -928,22 +903,14 @@ Aperture.onTheme = mode => {
   ambient.intensity = P.ambient;
   renderer.toneMappingExposure = P.exposure;
   GLOBE.setTheme(mode);
-  for(const [pts,key] of [[chaos,'chaos'],[order,'order']]){
+  for(const [pts,key] of [[chaos,'chaos']]){
     pts.material.uniforms.uColor.value.set(P[key]);
     pts.material.blending = P.blend;
-    pts.material.needsUpdate = true;          // blending change needs a recompile
+    pts.material.needsUpdate = true;
   }
-  nodeMeshes.forEach(m=> m.material.color.set(P.order));
-  nodeLights.forEach(l=> { l.color.set(P.order); l.intensity = mode==='day' ? 0.7 : 2.2; });
 };
-Aperture.onTheme(Aperture.theme);             // apply whatever was chosen before the scene existed
+Aperture.onTheme(Aperture.theme);
 
-/* ── pointer control ──
-   The canvas is pointer-events:none so it never blocks the page, so the drag is
-   listened for on the window and only engages on the globe's side of the
-   viewport — otherwise selecting text would spin the Earth. Releasing keeps the
-   residual velocity and lets friction carry it back to the automatic spin, so
-   there is no snap. */
 const AUTO_SPIN = 0.055;                       // radians/second
 const Drag = { active:false, vx:0, vy:0, lx:0, ly:0 };
 const onGlobeSide = x => x > innerWidth * 0.48;
@@ -966,7 +933,6 @@ let scale = 1;
 function frame(){
   const t = clock.getElapsedTime();
   chaos.material.uniforms.uTime.value = t;
-  order.material.uniforms.uTime.value = t;
 
   /* globe: frame-rate independent spin, drag override, eased return to auto */
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -975,15 +941,15 @@ function frame(){
     GLOBE.group.rotation.x  = Math.max(-0.5, Math.min(0.5, GLOBE.group.rotation.x + Drag.vy));
     Drag.vx *= 0.86; Drag.vy *= 0.86;
   } else {
-    Drag.vx *= 0.94; Drag.vy *= 0.94;                        /* glide, no snap */
+    Drag.vx *= 0.94; Drag.vy *= 0.94;
     GLOBE.group.rotation.y += Drag.vx;
     GLOBE.group.rotation.x += (0 - GLOBE.group.rotation.x) * 0.02;
     GLOBE.update(t, dt, AUTO_SPIN * (1 + Aperture.pulse*0.8));
   }
-  GLOBE.update(t, 0, 0);                                    /* keep uniforms current */
-  GLOBE.group.position.y = 0.05 + Math.sin(t*0.5)*0.03;     /* faint breathing drift */
+  GLOBE.update(t, 0, 0);
+  GLOBE.group.position.y = 0.05;
   const target = 1 + Aperture.pulse*0.05;
-  scale += (target - scale)*0.08;                           // lerp toward the pulse
+  scale += (target - scale)*0.08;
   GLOBE.group.scale.setScalar(scale);
 
   const s = sample(Aperture.progress);
@@ -994,6 +960,7 @@ function frame(){
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
+
 frame();
 
 addEventListener('resize', ()=>{

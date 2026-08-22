@@ -1,0 +1,374 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Agent X policy corpus — the rights and obligations a resolution can be built on.
+#
+# THREE RULES THIS FILE FOLLOWS, AND WHY
+#
+# 1. Every entry carries a `citation` and an `authority`. A consumer agent that
+#    tells someone "you're entitled to a refund" without saying under what is
+#    indistinguishable from one that guessed, and the first thing a call centre
+#    does is ask under what.
+#
+# 2. Conditions are declarative and evaluated deterministically against the case
+#    fact graph. An LLM may summarise a policy for the user; it never decides
+#    whether the policy applies. The difference matters because "does EU261 apply"
+#    has a right answer that turns on an arrival delay in minutes, and a language
+#    model asked that question will produce a confident sentence either way.
+#
+# 3. `jurisdiction` is honest. Where Agent X cannot establish which country's law
+#    governs, the policy is reported as `unknown`, not assumed. Consumer law is
+#    territorial and the same facts produce different entitlements in London,
+#    Delhi and Denver.
+#
+# This is a working corpus for the domains the engine covers, not a substitute for
+# legal advice, and `docs/AGENT_X_ARCHITECTURE.md` says so in the same words the UI
+# does.
+# ═══════════════════════════════════════════════════════════════════════════
+
+policies:
+
+  # ── payments ──────────────────────────────────────────────────────────
+  - id: card_scheme_chargeback
+    title: Card scheme dispute rights
+    authority: scheme_rule
+    jurisdiction: global
+    citation: Visa Core Rules / Mastercard Chargeback Guide — dispute reason codes for duplicate processing, credit not processed, and services not provided
+    summary: >
+      Card networks let an issuer reverse a transaction where the cardholder can
+      show duplicate processing, goods or services not received, or a credit that
+      was promised and never applied.
+    window_days: 120
+    window_from: incident
+    grants: [payment_dispute]
+    conditions:
+      - fact: charge.instrument
+        op: in
+        value: [card, credit_card, debit_card, unknown]
+        else: Scheme dispute rights only attach to card payments.
+      - fact: incident.days_ago
+        op: "<="
+        value: 120
+        else: The 120-day dispute window has closed for this transaction.
+    notes: >
+      Raising a dispute is a high-risk action in Agent X's governor: it can close a
+      merchant account relationship and is difficult to withdraw once filed.
+
+  - id: us_fcba
+    title: Fair Credit Billing Act — billing error rights
+    authority: statute
+    jurisdiction: US
+    citation: 15 U.S.C. § 1666 (Regulation Z § 1026.13)
+    summary: >
+      A cardholder may dispute a billing error in writing within 60 days of the
+      statement carrying it; the issuer must acknowledge and investigate.
+    window_days: 60
+    window_from: incident
+    grants: [payment_dispute]
+    conditions:
+      - fact: incident.days_ago
+        op: "<="
+        value: 60
+        else: The 60-day written-dispute window under the FCBA has passed.
+
+  - id: uk_cca_s75
+    title: Consumer Credit Act 1974 s.75 — connected lender liability
+    authority: statute
+    jurisdiction: UK
+    citation: Consumer Credit Act 1974, section 75
+    summary: >
+      For credit-card purchases between £100 and £30,000 the card issuer is jointly
+      liable with the merchant for misrepresentation or breach of contract, which
+      survives the merchant going out of business.
+    grants: [payment_dispute]
+    conditions:
+      - fact: charge.amount
+        op: between
+        value: [100, 30000]
+        else: s.75 applies to single purchases between £100 and £30,000.
+      - fact: charge.instrument
+        op: in
+        value: [credit_card, card, unknown]
+        else: s.75 applies to credit agreements, not debit cards.
+
+  - id: uk_prs_2017
+    title: Payment Services Regulations 2017 — unauthorised transactions
+    authority: statute
+    jurisdiction: UK
+    citation: Payment Services Regulations 2017, regs 74–77
+    summary: >
+      A payer who notifies without undue delay is entitled to an immediate refund
+      of an unauthorised payment, with the burden of proving authorisation on the
+      provider.
+    window_days: 13
+    window_from: incident
+    grants: [payment_dispute]
+
+  - id: in_rbi_harmonisation
+    title: RBI harmonisation of turnaround time for failed transactions
+    authority: regulator
+    jurisdiction: IN
+    citation: RBI circular DPSS.CO.PD No.629/02.01.014/2019-20
+    summary: >
+      Failed or duplicate electronic transactions must be auto-reversed within
+      defined timelines, with compensation of ₹100 per day for delay beyond them.
+    window_days: 30
+    window_from: incident
+    grants: [merchant_refund, payment_dispute]
+
+  # ── distance selling and goods ────────────────────────────────────────
+  - id: uk_ccr_2013
+    title: Consumer Contracts Regulations 2013 — cancellation and refunds
+    authority: statute
+    jurisdiction: UK
+    citation: The Consumer Contracts (Information, Cancellation and Additional Charges) Regulations 2013, regs 29–34
+    summary: >
+      Most distance contracts carry a 14-day cancellation right with no reason
+      required, and the trader must refund within 14 days of being told.
+    window_days: 14
+    window_from: incident
+    grants: [merchant_refund, cancellation, partial_refund]
+    conditions:
+      - fact: order.channel
+        op: in
+        value: [online, phone, distance, unknown]
+        else: The cancellation right applies to distance and off-premises contracts.
+
+  - id: uk_cra_2015
+    title: Consumer Rights Act 2015 — satisfactory quality and performance
+    authority: statute
+    jurisdiction: UK
+    citation: Consumer Rights Act 2015, ss.9–24 (goods) and ss.49–56 (services)
+    summary: >
+      Goods must be of satisfactory quality, as described and fit for purpose;
+      services must be performed with reasonable care and skill. A short-term right
+      to reject runs for 30 days, followed by a right to repair or replacement.
+    window_days: 30
+    window_from: incident
+    grants: [merchant_refund, replacement, repair, partial_refund, bill_correction]
+
+  - id: us_ftc_mito
+    title: FTC Mail, Internet, or Telephone Order Merchandise Rule
+    authority: regulator
+    jurisdiction: US
+    citation: 16 CFR Part 435
+    summary: >
+      A seller must ship within the promised time (or 30 days if none was stated),
+      or offer the buyer a delay consent or a prompt full refund.
+    window_days: 30
+    window_from: incident
+    grants: [merchant_refund, replacement]
+
+  - id: eu_sale_of_goods
+    title: EU Sale of Goods Directive — legal guarantee
+    authority: statute
+    jurisdiction: EU
+    citation: Directive (EU) 2019/771, Article 10
+    summary: >
+      A two-year legal guarantee of conformity applies to consumer goods, separate
+      from and additional to any commercial warranty.
+    window_days: 730
+    window_from: incident
+    grants: [repair, replacement, merchant_refund, partial_refund]
+
+  - id: in_consumer_protection_2019
+    title: Consumer Protection Act 2019 — deficiency in service
+    authority: statute
+    jurisdiction: IN
+    citation: Consumer Protection Act 2019, ss.2(11), 2(47), 35
+    summary: >
+      Deficiency in service and unfair trade practices are actionable before the
+      District Consumer Commission, including for e-commerce transactions under the
+      2020 E-Commerce Rules.
+    window_days: 730
+    window_from: incident
+    grants: [merchant_refund, replacement, statutory_compensation, regulator_complaint]
+
+  # ── subscriptions ─────────────────────────────────────────────────────
+  - id: us_rosca_click_to_cancel
+    title: ROSCA / negative-option cancellation requirements
+    authority: statute
+    jurisdiction: US
+    citation: Restore Online Shoppers' Confidence Act, 15 U.S.C. § 8403
+    summary: >
+      Negative-option and automatic-renewal offers require clear disclosure,
+      express informed consent, and a simple mechanism to stop recurring charges.
+    grants: [cancellation, merchant_refund, partial_refund]
+    notes: >
+      The FTC's expanded click-to-cancel rule has had a contested implementation
+      history; Agent X cites ROSCA itself, which is settled, rather than a rule whose
+      status a merchant could argue about.
+
+  # ── travel ────────────────────────────────────────────────────────────
+  - id: eu261
+    title: Regulation (EC) 261/2004 — air passenger rights
+    authority: statute
+    jurisdiction: EU
+    citation: Regulation (EC) No 261/2004, Articles 5–8
+    summary: >
+      Fixed compensation of EUR 250/400/600 by distance for cancellation or an
+      arrival delay of three hours or more, unless caused by extraordinary
+      circumstances, plus a right to a refund or re-routing.
+    window_days: 2190
+    window_from: incident
+    grants: [statutory_compensation, merchant_refund, rebooking]
+    conditions:
+      - fact: flight.delay_minutes
+        op: ">="
+        value: 180
+        else: EU261 cash compensation begins at a three-hour arrival delay.
+        skip_if_absent: true
+      - fact: flight.disruption_reason
+        op: not_in
+        value: [weather, air_traffic_control, security, strike_third_party, extraordinary]
+        else: The stated cause is an extraordinary circumstance, which is a defence to compensation but not to the refund and care duties.
+        skip_if_absent: true
+    entitlement: eu261_amount
+
+  - id: uk261
+    title: UK261 — retained air passenger rights
+    authority: statute
+    jurisdiction: UK
+    citation: The Air Passenger Rights and Air Travel Organisers' Licensing (Amendment) (EU Exit) Regulations 2019
+    summary: >
+      The retained UK version of EC 261/2004, with compensation denominated in
+      pounds (£220/£350/£520 by distance).
+    window_days: 2190
+    window_from: incident
+    grants: [statutory_compensation, merchant_refund, rebooking]
+    entitlement: uk261_amount
+
+  - id: montreal_convention
+    title: Montreal Convention 1999 — baggage liability
+    authority: statute
+    jurisdiction: global
+    citation: Montreal Convention, Articles 17, 19, 22 and 31
+    summary: >
+      Carrier liability for destroyed, lost, damaged or delayed baggage up to 1,288
+      SDR per passenger, subject to written notice within 7 days (damage) or 21
+      days (delay).
+    window_days: 21
+    window_from: incident
+    grants: [statutory_compensation, partial_refund]
+
+  - id: us_dot_refund
+    title: US DOT refund rule
+    authority: regulator
+    jurisdiction: US
+    citation: 14 CFR Part 259; DOT final rule on automatic refunds (2024)
+    summary: >
+      Airlines must promptly and automatically refund the fare when a flight is
+      cancelled or significantly changed and the passenger declines the alternative.
+    window_days: 365
+    window_from: incident
+    grants: [merchant_refund, rebooking]
+
+  - id: us_dot_delay
+    title: US DOT delay obligations
+    authority: regulator
+    jurisdiction: US
+    citation: 14 CFR Part 259 and carrier customer service plans
+    summary: >
+      The US has no fixed cash compensation for delay; entitlements come from the
+      carrier's own filed customer service plan, which is binding on it.
+    grants: [goodwill_credit, partial_refund]
+
+  - id: us_dot_denied_boarding
+    title: US denied boarding compensation
+    authority: regulator
+    jurisdiction: US
+    citation: 14 CFR Part 250
+    summary: >
+      Involuntary denied boarding carries compensation of 200% or 400% of the
+      one-way fare depending on the delay to the passenger's arrival, subject to
+      caps.
+    grants: [statutory_compensation]
+
+  - id: eu_package_travel
+    title: Package Travel Directive
+    authority: statute
+    jurisdiction: EU
+    citation: Directive (EU) 2015/2302
+    summary: >
+      Where accommodation was sold as part of a package, the organiser is liable
+      for the performance of every component and must provide alternatives at no
+      extra cost.
+    grants: [merchant_refund, rebooking, statutory_compensation]
+
+  # ── pricing and regulated supply ──────────────────────────────────────
+  - id: us_ftc_junk_fees
+    title: FTC rule on unfair or deceptive fees
+    authority: regulator
+    jurisdiction: US
+    citation: 16 CFR Part 464 (Rule on Unfair or Deceptive Fees, 2024)
+    summary: >
+      Total price including mandatory fees must be disclosed up front in live-event
+      ticketing and short-term lodging; misrepresenting fees is an unfair practice.
+    grants: [partial_refund, bill_correction]
+
+  - id: uk_ofcom_gc
+    title: Ofcom General Conditions — billing and contract change
+    authority: regulator
+    jurisdiction: UK
+    citation: Ofcom General Conditions of Entitlement, C1 and C7
+    summary: >
+      Providers must bill accurately, notify contract changes, and give a right to
+      exit without penalty where a change is materially detrimental.
+    window_days: 56
+    window_from: first_contact
+    grants: [bill_correction, cancellation, partial_refund]
+
+  - id: uk_ofgem_backbilling
+    title: Ofgem back-billing rule
+    authority: regulator
+    jurisdiction: UK
+    citation: Standard Licence Condition 21BA
+    summary: >
+      A supplier may not bill for energy consumed more than 12 months earlier where
+      it failed to bill accurately at the time.
+    window_days: 365
+    window_from: incident
+    grants: [bill_correction, partial_refund]
+
+  # ── escalation bodies ─────────────────────────────────────────────────
+  - id: uk_fos
+    title: Financial Ombudsman Service
+    authority: regulator
+    jurisdiction: UK
+    citation: FCA DISP rules; FOS eligibility criteria
+    summary: >
+      After a firm's final response, or eight weeks without one, an eligible
+      complainant may refer a financial services complaint to the ombudsman free of
+      charge.
+    window_days: 180
+    window_from: submission
+    grants: [regulator_complaint]
+
+  - id: in_irdai_grievance
+    title: IRDAI grievance and Insurance Ombudsman
+    authority: regulator
+    jurisdiction: IN
+    citation: IRDAI (Protection of Policyholders' Interests) Regulations; Insurance Ombudsman Rules 2017
+    summary: >
+      An insurer must resolve a grievance within 15 days; unresolved complaints may
+      be taken to the Insurance Ombudsman within one year of rejection.
+    window_days: 365
+    window_from: submission
+    grants: [regulator_complaint]
+
+  # ── the counterparty's own terms ──────────────────────────────────────
+  - id: merchant_terms
+    title: The counterparty's own published terms
+    authority: merchant_terms
+    jurisdiction: contract
+    citation: Retrieved from the merchant or provider at the time of the case
+    summary: >
+      Contractual terms can only add to statutory rights, never subtract from them,
+      but they frequently offer a faster route than the statutory one and are what
+      a first-line agent is actually empowered to apply.
+    grants: [merchant_refund, partial_refund, cancellation, replacement, repair,
+             goodwill_credit, rebooking, bill_correction, explanation]
+    dynamic: true
+    notes: >
+      Marked dynamic: the content is fetched per case through a provider rather
+      than shipped in this file, because it differs by merchant and changes without
+      notice. Where no provider can retrieve it, applicability is reported as
+      unknown rather than assumed.

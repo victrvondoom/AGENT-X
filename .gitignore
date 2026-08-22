@@ -13,3 +13,11 @@ node_modules/
 secrets/
 docs/_*.txt
 docs/_*.json
+
+# Agent X local engine artefacts. The SQLite file holds sealed case data and the
+# keyfiles are the root/signing keys minted on first run when no env key is set
+# -- committing either would publish the material that makes crypto-shredding
+# meaningful.
+data/*.db
+*.rootkey
+*.signkey

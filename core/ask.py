@@ -109,10 +109,18 @@ def _serialize(nodes, edges) -> str:
     return "\n".join(lines)
 
 
-def ask(query: str, history: list | None = None, workspace: str = "default") -> tuple[str, list]:
-    """Answer `query` from a workspace's memory. Returns (answer, sources) — sources are the entity
-    names the answer is grounded in, surfaced as clickable citations. Folds prior USER turns for
-    follow-ups; never folds past answers (a forgotten fact could resurface, poisoning the grounding)."""
+def ask(
+    query: str,
+    history: list | None = None,
+    workspace: str = "default",
+    capability: str | None = None,
+    assist_style: str | None = None,
+    output_format: str | None = None,
+) -> tuple[str, list]:
+    """Answer `query` from a workspace's memory using capability-aware routing.
+
+    Returns (answer, sources) — sources are entity names for clickable citations.
+    """
     st = _smalltalk(query)
     if st is not None:
         return st, []
@@ -124,13 +132,52 @@ def ask(query: str, history: list | None = None, workspace: str = "default") -> 
             convo = "\n".join("User: " + str(t.get("content", ""))[:400] for t in turns)
             q = f"Earlier in this conversation the user asked:\n{convo}\n\nThe user now asks: {query}"
 
+    # Determine retrieval depth based on capability or assist style
+    k_val = 10 if (capability == "research" or assist_style == "deeply") else 6
+    hops_val = 2 if (capability == "research" or assist_style == "deeply") else 1
+
     with store.connect() as conn:
-        nodes, edges = _retrieve(conn, q, workspace)
+        nodes, edges = _retrieve(conn, q, workspace, k=k_val, hops=hops_val)
+
     if not nodes:
         return "I don't have anything on record about that.", []
 
+    # Dynamic capability & style prompt orchestration
+    prompt = ANSWER_PROMPT
+    temp = 0.0
+
+    if capability == "create":
+        temp = 0.7
+        prompt += " Focus on creative drafting, generating fresh ideas, and engaging prose."
+    elif capability == "analyze":
+        prompt += " Focus on structured analysis, key metric extraction, and identifying patterns."
+    elif capability == "build":
+        prompt += " Focus on technical accuracy, actionable code/system steps, and implementation clarity."
+    elif capability == "decide":
+        prompt += " Focus on evaluating trade-offs, comparing options objectively, and structured decision making."
+    elif capability == "learn":
+        prompt += " Focus on step-by-step explanations, clear analogies, and educational clarity."
+    elif capability == "research":
+        prompt += " Focus on thorough investigation, citing distinct evidence, and comprehensive context synthesis."
+
+    if assist_style == "step-by-step":
+        prompt += " Break down your response into logical, numbered step-by-step guidance."
+    elif assist_style == "critically":
+        prompt += " Examine counter-arguments, potential risks, and critical trade-offs."
+    elif assist_style == "quickly":
+        prompt += " Provide a concise, direct, high-level response without unnecessary fluff."
+    elif assist_style == "simply":
+        prompt += " Explain using simple, intuitive language suitable for non-technical readers."
+
+    if output_format == "table":
+        prompt += " Present the main findings or comparison in a Markdown table."
+    elif output_format == "summary":
+        prompt += " Format the response as a bulleted executive summary."
+    elif output_format == "report":
+        prompt += " Format the response as a detailed, well-structured report with clear headings."
+
     user = f"Context (the user's records):\n{_serialize(nodes, edges)}\n\nUser question: {query}"
-    answer = client.chat(ANSWER_PROMPT, user, temperature=0.0, max_tokens=500).strip()
-    # sources = the distinct entity names the answer is grounded in (clickable citations)
+    answer = client.chat(prompt, user, temperature=temp, max_tokens=700).strip()
     sources = list(dict.fromkeys(n[1] for n in nodes if n[1]))[:6]
     return answer, sources
+

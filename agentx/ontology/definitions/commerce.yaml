@@ -1,0 +1,259 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Buying things: what arrived, what didn't, and what came back.
+# ═══════════════════════════════════════════════════════════════════════════
+
+problem_type: order_not_received
+domain: delivery
+label: Order never arrived
+summary: >
+  Payment was taken and the goods did not arrive. The carrier's "delivered" scan
+  is the usual point of conflict, and it is evidence, not proof.
+prior: 0.16
+provider_family: merchant
+phrases:
+  - never arrived
+  - not delivered
+  - missing package
+  - package never came
+  - didn't receive my order
+  - says delivered but
+  - lost parcel
+  - where is my order
+patterns:
+  - "(never|not|didn.t).{0,15}(arrive|deliver|receive)"
+  - "marked as delivered"
+required_entities: [merchant, order]
+optional_entities: [shipment, payment, amount, date, location]
+required_evidence:
+  - kind: order_confirmation
+    why: Establishes what was bought, for how much, and the promised delivery window.
+    critical: true
+    satisfied_by: [receipt, invoice, email, provider_record]
+  - kind: tracking
+    why: The carrier's own scan history is what the merchant will argue from.
+    critical: false
+    satisfied_by: [screenshot, order_page, provider_record]
+  - kind: transaction
+    why: Confirms money actually left the account.
+    critical: false
+    satisfied_by: [bank_statement]
+expected_facts:
+  - order.id
+  - order.total
+  - order.promised_by
+  - shipment.status
+  - shipment.delivered_at
+discriminators:
+  - id: tracking_says
+    question: What does the tracking say?
+    kind: choice
+    options: ["Delivered", "In transit", "No tracking information", "Returned to sender"]
+    why: A delivered scan turns this into a non-receipt dispute with a different evidence burden.
+    favours: {order_not_received: 0.2}
+    disfavours: {}
+  - id: neighbours_checked
+    question: Have you checked with neighbours or a safe place?
+    kind: choice
+    options: ["Yes, nothing", "Not yet", "Not applicable"]
+    why: Merchants ask this first; answering it up front removes the standard delay tactic.
+policies: [uk_cra_2015, uk_ccr_2013, us_ftc_mito, card_scheme_chargeback, in_consumer_protection_2019]
+resolution_strategies: [replacement, merchant_refund, payment_dispute]
+escalation: [merchant_support, carrier_support, payment_provider, regulator_complaint]
+deadlines:
+  - label: Merchant response expected
+    days: 5
+    kind: merchant_sla
+    from_event: first_contact
+  - label: Card scheme dispute window
+    days: 120
+    kind: scheme
+    from_event: incident
+    source: card_scheme_chargeback
+risk: medium
+default_autonomy: 2
+
+---
+problem_type: wrong_item_received
+domain: commerce
+label: Wrong item received
+summary: >
+  What arrived is not what was ordered — different product, size, colour, or
+  quantity.
+prior: 0.12
+provider_family: merchant
+phrases:
+  - wrong item
+  - not what i ordered
+  - sent the wrong
+  - different product
+  - wrong size
+  - wrong colour
+  - isn't what i ordered
+  - received the wrong
+patterns:
+  - "(wrong|different|not what).{0,20}(item|product|thing|order|size|colour|color)"
+required_entities: [merchant, order, product]
+optional_entities: [payment, amount, shipment]
+required_evidence:
+  - kind: order_confirmation
+    why: What was actually ordered, in the merchant's own words.
+    critical: true
+    satisfied_by: [receipt, invoice, email, provider_record]
+  - kind: photograph
+    why: What arrived. A photograph of the item and its label settles most of these in one step.
+    critical: true
+    satisfied_by: [screenshot]
+expected_facts:
+  - order.id
+  - order.item
+  - received.item
+  - order.total
+policies: [uk_cra_2015, uk_ccr_2013, us_ftc_mito, in_consumer_protection_2019, merchant_terms]
+resolution_strategies: [replacement, merchant_refund, partial_refund]
+escalation: [merchant_support, payment_provider, regulator_complaint]
+deadlines:
+  - label: Short-term right to reject
+    days: 30
+    kind: statutory
+    from_event: incident
+    source: uk_cra_2015
+risk: low
+default_autonomy: 3
+
+---
+problem_type: damaged_item
+domain: commerce
+label: Item arrived damaged or faulty
+summary: >
+  The goods arrived broken, or failed soon after. Distinguished from a wrong item
+  because the remedy ladder is repair, then replacement, then refund.
+prior: 0.10
+provider_family: merchant
+phrases:
+  - arrived damaged
+  - arrived broken
+  - it's faulty
+  - stopped working
+  - doesn't work
+  - defective
+  - cracked screen
+patterns:
+  - "(damaged|broken|faulty|defective|cracked|smashed)"
+required_entities: [merchant, order, product]
+optional_entities: [payment, amount, date]
+required_evidence:
+  - kind: photograph
+    why: Damage has to be seen. A photograph at unboxing is worth more than any description.
+    critical: true
+  - kind: order_confirmation
+    why: Ties the damaged item to a purchase and a date.
+    critical: true
+    satisfied_by: [receipt, invoice, provider_record]
+expected_facts:
+  - order.id
+  - order.item
+  - order.delivered_at
+  - damage.description
+policies: [uk_cra_2015, us_ftc_mito, in_consumer_protection_2019, merchant_terms]
+resolution_strategies: [replacement, repair, merchant_refund, partial_refund]
+escalation: [merchant_support, payment_provider, regulator_complaint]
+deadlines:
+  - label: Short-term right to reject
+    days: 30
+    kind: statutory
+    from_event: incident
+    source: uk_cra_2015
+risk: low
+default_autonomy: 3
+
+---
+problem_type: refund_not_received
+domain: commerce
+label: Promised refund never arrived
+summary: >
+  The merchant agreed to refund and the money has not appeared. The dispute is no
+  longer about the original problem — it is about a promise on the record.
+prior: 0.11
+provider_family: merchant
+phrases:
+  - still waiting for my refund
+  - refund never came
+  - they said they refunded
+  - promised a refund
+  - refund not received
+  - no refund yet
+patterns:
+  - "(refund).{0,25}(not|never|still waiting|hasn.t)"
+required_entities: [merchant, payment]
+optional_entities: [order, amount, case_ref, date]
+required_evidence:
+  - kind: email
+    why: The merchant's own confirmation that a refund was issued is the strongest possible lever.
+    critical: true
+    satisfied_by: [chat_transcript, screenshot, provider_record]
+  - kind: bank_statement
+    why: Shows the credit is genuinely absent, which the merchant will otherwise dispute.
+    critical: true
+    satisfied_by: [transaction]
+expected_facts:
+  - refund.promised_at
+  - refund.amount
+  - refund.reference
+  - refund.received
+policies: [uk_cra_2015, uk_ccr_2013, card_scheme_chargeback, us_fcba, in_rbi_harmonisation]
+resolution_strategies: [merchant_refund, payment_dispute]
+escalation: [merchant_support, payment_provider, regulator_complaint]
+deadlines:
+  - label: Statutory refund period for distance sales
+    days: 14
+    kind: statutory
+    from_event: first_contact
+    source: uk_ccr_2013
+risk: medium
+default_autonomy: 2
+
+---
+problem_type: return_refused
+domain: commerce
+label: Return or cancellation refused
+summary: >
+  The merchant will not accept a return, or is applying a restocking or
+  cancellation charge the user believes is not lawful.
+prior: 0.09
+provider_family: merchant
+phrases:
+  - won't accept my return
+  - refused my return
+  - they refuse to refund
+  - no returns policy
+  - restocking fee
+  - refuses to refund me
+patterns:
+  - "(refuse|won.t|will not).{0,20}(refund|return|accept)"
+required_entities: [merchant, order]
+optional_entities: [product, payment, amount, case_ref]
+required_evidence:
+  - kind: order_confirmation
+    why: Purchase date and channel decide whether a distance-selling cancellation right exists.
+    critical: true
+    satisfied_by: [receipt, invoice, provider_record]
+  - kind: email
+    why: The refusal itself, in the merchant's words.
+    critical: false
+    satisfied_by: [chat_transcript, screenshot]
+expected_facts:
+  - order.id
+  - order.purchased_at
+  - order.channel
+  - refusal.reason
+policies: [uk_ccr_2013, uk_cra_2015, us_ftc_mito, in_consumer_protection_2019, merchant_terms]
+resolution_strategies: [merchant_refund, partial_refund, payment_dispute]
+escalation: [merchant_support, payment_provider, regulator_complaint]
+deadlines:
+  - label: Cooling-off period for distance contracts
+    days: 14
+    kind: statutory
+    from_event: incident
+    source: uk_ccr_2013
+risk: medium
+default_autonomy: 2

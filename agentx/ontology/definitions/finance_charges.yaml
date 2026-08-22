@@ -1,0 +1,283 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Charge-on-my-statement problems.
+#
+# These six share the `repeat_charge` ambiguity group, and that grouping is the
+# single most important thing in this file. "They charged me again" is the most
+# common sentence a consumer types and the least informative: it is equally
+# consistent with a genuine duplicate, a renewal the user forgot, a hotel's
+# pre-authorisation hold, an instalment plan, a corrected re-issue, and fraud.
+#
+# A classifier that returns one label here is wrong five times out of six. So all
+# six stay live until a discriminator separates them, and the discriminators are
+# written to move several hypotheses at once — "were the amounts identical?"
+# reweights the whole set, rather than confirming a single guess.
+# ═══════════════════════════════════════════════════════════════════════════
+
+problem_type: duplicate_charge
+domain: finance
+label: Duplicate charge
+summary: >
+  The same purchase was billed more than once. The merchant received two
+  authorisations for one order, usually from a retried checkout.
+prior: 0.22
+ambiguity_group: repeat_charge
+provider_family: payment
+phrases:
+  - charged twice
+  - charged me twice
+  - double charge
+  - double charged
+  - duplicate charge
+  - two charges
+  - billed twice
+  - same amount twice
+  - charged again for the same
+patterns:
+  - "charged? .{0,20}(twice|two times|2 times)"
+  - "two identical (charges|transactions)"
+# Group triggers wake every rival in `repeat_charge`, not just this definition.
+# "They charged me again" is evidence about the GROUP and silent about which
+# member; matching it here without this key would hand the case to whichever
+# keyword list happened to be written first.
+group_triggers:
+  - 'charg(?:ed|e|es|ing)?\s+(?:me\s+)?again'
+  - 'another charge'
+  - 'charged\s+(?:me\s+)?(?:a\s+)?second time'
+  - 'took money again'
+  - 'why (?:have|did|was) (?:i|they).{0,20}charg'
+  - 'unexpected charge'
+  - 'charge i (?:don.t|do not) (?:expect|recognise|recognize)'
+negative_phrases:
+  - free trial
+  - i cancelled
+required_entities: [merchant, payment]
+optional_entities: [order, card, amount, date]
+required_evidence:
+  - kind: transaction
+    why: Two separate transaction lines are what make a duplicate a fact rather than an impression.
+    critical: true
+    satisfied_by: [bank_statement]
+  - kind: receipt
+    why: Shows how many orders the merchant actually created.
+    critical: false
+    satisfied_by: [order_confirmation, invoice]
+expected_facts:
+  - charge.amount
+  - charge.date
+  - merchant.name
+  - order.count
+discriminators:
+  - id: identical_amounts
+    question: Were the two charges for exactly the same amount?
+    kind: choice
+    options: ["Yes, identical", "No, different amounts", "Not sure"]
+    why: Identical amounts point at a duplicate; different amounts point at an instalment or a corrected re-issue.
+    favours: {duplicate_charge: 0.35, fraud_suspected: 0.05}
+    disfavours: {installment_charge: 0.3, corrected_invoice: 0.25, authorization_hold: 0.1}
+  - id: same_day
+    question: Did both charges land within a day or two of each other?
+    kind: choice
+    options: ["Yes, close together", "No, weeks or months apart", "Not sure"]
+    why: A duplicate is a checkout retry and lands immediately; a renewal lands a cycle later.
+    favours: {duplicate_charge: 0.25, authorization_hold: 0.2}
+    disfavours: {subscription_renewal_unexpected: 0.35}
+  - id: one_order
+    question: Did you receive one order or two?
+    kind: choice
+    options: ["One", "Two", "Nothing yet"]
+    why: Two deliveries mean two real orders, which is not a duplicate charge but a mistaken second purchase.
+    favours: {duplicate_charge: 0.3}
+    disfavours: {}
+policies: [card_scheme_chargeback, us_fcba, uk_cca_s75, in_rbi_harmonisation, merchant_terms]
+resolution_strategies: [merchant_refund, payment_dispute]
+escalation: [merchant_support, payment_provider, regulator_complaint]
+deadlines:
+  - label: Card scheme dispute window
+    days: 120
+    kind: scheme
+    from_event: incident
+    source: card_scheme_chargeback
+  - label: Merchant response expected
+    days: 5
+    kind: merchant_sla
+    from_event: first_contact
+risk: medium
+default_autonomy: 2
+
+---
+problem_type: authorization_hold
+domain: finance
+label: Pre-authorisation hold
+summary: >
+  A pending authorisation the merchant placed as a deposit or check, which has not
+  settled and will usually drop off on its own. Not money taken — money fenced.
+prior: 0.12
+ambiguity_group: repeat_charge
+provider_family: payment
+phrases:
+  - pending charge
+  - pending transaction
+  - hold on my card
+  - deposit hold
+  - pre-authorisation
+  - preauthorization
+  - it says pending
+patterns:
+  - "pending .{0,15}(charge|transaction|amount)"
+required_entities: [merchant, payment]
+optional_entities: [booking, card, amount]
+required_evidence:
+  - kind: transaction
+    why: The pending/settled flag is the whole question, and only the transaction record carries it.
+    critical: true
+    satisfied_by: [bank_statement, screenshot]
+expected_facts:
+  - charge.status
+  - charge.amount
+  - charge.date
+discriminators:
+  - id: pending_flag
+    question: Does your bank show the charge as pending, or as completed?
+    kind: choice
+    options: ["Pending", "Completed", "Not sure"]
+    why: A pending line is an authorisation hold and usually needs waiting out, not disputing.
+    favours: {authorization_hold: 0.5}
+    disfavours: {duplicate_charge: 0.3, fraud_suspected: 0.2}
+policies: [card_scheme_chargeback, merchant_terms]
+resolution_strategies: [explanation, merchant_refund]
+escalation: [merchant_support, payment_provider]
+deadlines:
+  - label: Typical hold expiry
+    days: 7
+    kind: scheme
+    from_event: incident
+risk: low
+default_autonomy: 1
+
+---
+problem_type: installment_charge
+domain: finance
+label: Instalment or split payment
+summary: >
+  A second charge that is the next instalment of a plan the user agreed to, or a
+  split-payment arrangement at checkout.
+prior: 0.08
+ambiguity_group: repeat_charge
+provider_family: payment
+phrases:
+  - instalment
+  - installment
+  - pay in 3
+  - pay in 4
+  - split payment
+  - buy now pay later
+  - klarna
+required_entities: [merchant, payment]
+optional_entities: [order, amount]
+required_evidence:
+  - kind: order_confirmation
+    why: The plan terms at checkout say how many payments were agreed.
+    critical: false
+    satisfied_by: [receipt, email, terms]
+  - kind: transaction
+    why: Instalments show as equal fractions of the order total.
+    critical: true
+    satisfied_by: [bank_statement]
+expected_facts:
+  - charge.amount
+  - order.total
+  - plan.installments
+policies: [merchant_terms, uk_cra_2015]
+resolution_strategies: [explanation, bill_correction]
+escalation: [merchant_support]
+risk: low
+default_autonomy: 1
+
+---
+problem_type: corrected_invoice
+domain: billing
+label: Re-issued or corrected charge
+summary: >
+  The merchant voided a first charge and re-issued a corrected one. Two lines
+  appear, but only one will settle.
+prior: 0.06
+ambiguity_group: repeat_charge
+provider_family: merchant
+phrases:
+  - corrected invoice
+  - adjusted bill
+  - reissued
+  - they voided
+  - refunded and recharged
+required_entities: [merchant, payment]
+optional_entities: [order, amount]
+required_evidence:
+  - kind: invoice
+    why: A corrected invoice references the one it replaces.
+    critical: false
+    satisfied_by: [receipt, email]
+  - kind: transaction
+    why: A void or reversal line next to the new charge settles it.
+    critical: true
+    satisfied_by: [bank_statement]
+expected_facts:
+  - charge.amount
+  - charge.status
+  - invoice.replaces
+policies: [merchant_terms, uk_cra_2015]
+resolution_strategies: [explanation, bill_correction]
+escalation: [merchant_support]
+risk: low
+default_autonomy: 1
+
+---
+problem_type: fraud_suspected
+domain: finance
+label: Charge the user does not recognise
+summary: >
+  A transaction the user did not authorise. Treated as its own class because the
+  correct first action is card safety, not a refund request to the merchant.
+prior: 0.10
+ambiguity_group: repeat_charge
+provider_family: payment
+phrases:
+  - i don't recognise
+  - i dont recognize
+  - never bought
+  - didn't authorise
+  - did not authorize
+  - fraud
+  - stolen card
+  - someone used my card
+  - unauthorised
+  - unauthorized
+required_entities: [payment]
+optional_entities: [merchant, card, amount, date]
+required_evidence:
+  - kind: transaction
+    why: The disputed line, with the merchant descriptor as the bank recorded it.
+    critical: true
+    satisfied_by: [bank_statement, screenshot]
+expected_facts:
+  - charge.amount
+  - charge.date
+  - merchant.descriptor
+discriminators:
+  - id: recognise_merchant
+    question: Do you recognise the merchant name on the charge?
+    kind: choice
+    options: ["Yes", "No", "It looks unfamiliar but might be a trading name"]
+    why: Unfamiliar descriptors are very often a parent company, which is a very different case from fraud.
+    favours: {fraud_suspected: 0.4}
+    disfavours: {duplicate_charge: 0.2, subscription_renewal_unexpected: 0.2}
+policies: [card_scheme_chargeback, us_fcba, uk_cca_s75, in_rbi_harmonisation]
+resolution_strategies: [payment_dispute]
+escalation: [payment_provider, regulator_complaint]
+deadlines:
+  - label: Report unauthorised transaction promptly
+    days: 13
+    kind: statutory
+    from_event: incident
+    source: uk_prs_2017
+risk: high
+default_autonomy: 2

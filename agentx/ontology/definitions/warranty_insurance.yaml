@@ -1,0 +1,114 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Promises about the future: guarantees and policies.
+#
+# Both of these differ from the rest of the catalogue in one way that changes the
+# whole plan: the counterparty has a written document that governs the outcome, so
+# the first useful action is almost always to read that document rather than to
+# argue. The evidence requirements reflect that.
+# ═══════════════════════════════════════════════════════════════════════════
+
+problem_type: warranty_claim
+domain: warranty
+label: Warranty claim
+summary: >
+  A product failed within a guarantee period and the manufacturer or retailer is
+  being asked to repair, replace or refund it.
+prior: 0.07
+provider_family: merchant
+phrases:
+  - under warranty
+  - warranty claim
+  - guarantee
+  - it broke after
+  - still under guarantee
+  - extended warranty
+patterns:
+  - "(warranty|guarantee).{0,25}(claim|cover|still|expired)"
+required_entities: [merchant, product]
+optional_entities: [order, policy_number, date, amount]
+required_evidence:
+  - kind: warranty_document
+    why: The guarantee's term, exclusions and claim route decide everything that follows.
+    critical: true
+    satisfied_by: [policy_document, terms, email]
+  - kind: receipt
+    why: Proof of purchase and its date — the clock every warranty runs on.
+    critical: true
+    satisfied_by: [order_confirmation, invoice, transaction]
+  - kind: photograph
+    why: The fault, where it is visible.
+    critical: false
+expected_facts:
+  - product.name
+  - purchase.date
+  - warranty.months
+  - fault.description
+  - fault.occurred_at
+discriminators:
+  - id: within_term
+    question: How long ago did you buy it?
+    kind: text
+    why: A claim outside the guarantee term may still succeed under statutory durability rights, but it is a different argument entirely.
+policies: [uk_cra_2015, eu_sale_of_goods, in_consumer_protection_2019, merchant_terms]
+resolution_strategies: [repair, replacement, merchant_refund, partial_refund]
+escalation: [merchant_support, manufacturer_support, regulator_complaint]
+deadlines:
+  - label: Statutory durability period
+    days: 2190
+    kind: statutory
+    from_event: incident
+    source: uk_cra_2015
+risk: low
+default_autonomy: 2
+
+---
+problem_type: insurance_claim_denied
+domain: insurance
+label: Insurance claim denied
+summary: >
+  An insurer rejected a claim. The remedy path is an internal complaint first and
+  an ombudsman second — going straight to a regulator gets a case bounced.
+prior: 0.05
+provider_family: merchant
+phrases:
+  - claim was denied
+  - claim rejected
+  - insurance refused
+  - they won't pay out
+  - denied my claim
+  - policy exclusion
+patterns:
+  - "(claim).{0,20}(denied|rejected|refused|declined)"
+required_entities: [provider, policy_number]
+optional_entities: [amount, date, case_ref]
+required_evidence:
+  - kind: policy_document
+    why: The exclusion the insurer relies on either exists in the wording or it does not.
+    critical: true
+    satisfied_by: [terms, email]
+  - kind: email
+    why: The denial letter states the ground, which is what any complaint must answer.
+    critical: true
+    satisfied_by: [chat_transcript, screenshot, provider_record]
+expected_facts:
+  - policy.number
+  - claim.reference
+  - claim.amount
+  - denial.reason
+  - denial.at
+policies: [uk_fos, uk_cra_2015, in_irdai_grievance, merchant_terms]
+resolution_strategies: [insurance_claim, statutory_compensation, explanation]
+escalation: [merchant_support, ombudsman, regulator_complaint]
+deadlines:
+  - label: Final response before ombudsman referral
+    days: 56
+    kind: scheme
+    from_event: first_contact
+    source: uk_fos
+  - label: Ombudsman referral window after final response
+    days: 180
+    kind: scheme
+    from_event: submission
+    source: uk_fos
+risk: medium
+default_autonomy: 2
