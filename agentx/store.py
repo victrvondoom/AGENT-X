@@ -43,7 +43,7 @@ _MIGRATIONS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(_
 # subset documented in 005; the trust spine's own migrations (001-004) are
 # CockroachDB-side and are applied by scripts/init_trust.py, not from here.
 MIGRATIONS = ("005_agentx_cases.sql", "006_sandbox.sql", "007_outcomes.sql",
-              "008_case_clock.sql")
+              "008_case_clock.sql", "009_research.sql")
 
 # Where the local engine keeps its file. Overridable so tests get their own.
 DEFAULT_SQLITE_PATH = os.path.join(

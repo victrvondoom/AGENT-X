@@ -80,8 +80,8 @@ code{background:rgba(0,0,0,.35);padding:.1rem .35rem;border-radius:4px;font-size
   <div class="card">
     <label class="mono" style="font-size:.72rem;color:var(--dim)">PASTE CERTIFICATE JSON</label>
     <textarea id="input" spellcheck="false" placeholder='{ "certificate": { ... }, "sha256": "...", "signature": "...", "public_key": "-----BEGIN PUBLIC KEY-----..." }'></textarea>
-    <button onclick="run()">Verify</button>
-    <button class="ghost" onclick="document.getElementById('input').value='';document.getElementById('out').innerHTML=''">Clear</button>
+    <button type="button" onclick="run()">Verify</button>
+    <button type="button" class="ghost" onclick="document.getElementById('input').value='';document.getElementById('out').innerHTML=''">Clear</button>
   </div>
 
   <div id="out"></div>

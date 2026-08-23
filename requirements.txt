@@ -13,3 +13,7 @@ jinja2
 python-multipart
 httpx
 fastmcp
+# PDF text-layer extraction for uploaded evidence (agentx/documents.py). Pure
+# Python, no binary dependency. Optional at runtime: when it is absent, an
+# uploaded PDF is stored, hashed and reported as unread rather than failing.
+pypdf

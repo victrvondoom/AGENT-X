@@ -1,0 +1,92 @@
+{
+  "total_evaluations": 3,
+  "generated_at": "2025-12-12 17:34:57",
+  "evaluations": [
+    {
+      "benchmark_name": "MMLU",
+      "model_name": "Model_20251211_170658",
+      "evaluation_date": "December 11, 2025 at 05:06 PM",
+      "duration": "21m 18s",
+      "overall_scores": [
+        {
+          "name": "MMLU",
+          "score": 23.23,
+          "color": "#7f1d1d",
+          "is_primary": true
+        },
+        {
+          "name": "- Humanities",
+          "score": 25.08,
+          "color": "#ef4444"
+        },
+        {
+          "name": "- Other",
+          "score": 23.08,
+          "color": "#7f1d1d"
+        },
+        {
+          "name": "- Social Sciences",
+          "score": 22.5,
+          "color": "#7f1d1d"
+        },
+        {
+          "name": "- Stem",
+          "score": 22.53,
+          "color": "#7f1d1d"
+        }
+      ],
+      "individual_tasks": [],
+      "statistics": {
+        "average": 0,
+        "highest": 0,
+        "lowest": 0,
+        "total_tasks": 0
+      },
+      "raw_file_path": "../../eval_results/11122025122303/lm_harness_20251211_170658/task_result.json"
+    },
+    {
+      "benchmark_name": "ARC",
+      "model_name": "Model_20251211_172821",
+      "evaluation_date": "December 11, 2025 at 05:28 PM",
+      "duration": "11m 39s",
+      "overall_scores": [
+        {
+          "name": "ARC",
+          "score": 29.95,
+          "color": "#ef4444",
+          "is_primary": true
+        }
+      ],
+      "individual_tasks": [],
+      "statistics": {
+        "average": 0,
+        "highest": 0,
+        "lowest": 0,
+        "total_tasks": 0
+      },
+      "raw_file_path": "../../eval_results/11122025122303/lm_harness_20251211_172821/task_result.json"
+    },
+    {
+      "benchmark_name": "HELLASWAG",
+      "model_name": "Model_20251211_174005",
+      "evaluation_date": "December 11, 2025 at 05:40 PM",
+      "duration": "1h 14m",
+      "overall_scores": [
+        {
+          "name": "HELLASWAG",
+          "score": 43.0,
+          "color": "#f59e0b",
+          "is_primary": true
+        }
+      ],
+      "individual_tasks": [],
+      "statistics": {
+        "average": 0,
+        "highest": 0,
+        "lowest": 0,
+        "total_tasks": 0
+      },
+      "raw_file_path": "../../eval_results/11122025122303/lm_harness_20251211_174005/task_result.json"
+    }
+  ]
+}

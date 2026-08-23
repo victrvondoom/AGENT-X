@@ -80,7 +80,7 @@ a{color:var(--bone-dim)}
 
   <div class="bar">
     <input type="text" id="jobId" placeholder="job id" style="max-width:24rem;margin:0">
-    <button onclick="load()">Load</button>
+    <button type="button" onclick="load()">Load</button>
     <span id="chips"></span>
   </div>
 
@@ -150,8 +150,8 @@ function render(){
           </div>
           <input type="text" id="v_${f.id}" value="${esc(f.value ?? '')}">
           <div class="acts">
-            <button class="primary" onclick="decide('${f.id}','ACCEPT')">Accept as extracted</button>
-            <button onclick="decide('${f.id}','CORRECT')">Save correction</button>
+            <button type="button" class="primary" onclick="decide('${f.id}','ACCEPT')">Accept as extracted</button>
+            <button type="button" onclick="decide('${f.id}','CORRECT')">Save correction</button>
           </div>
         </div>`).join('')
     : `<div class="card">Nothing awaiting review. Job is <b>${esc(j.status)}</b>.</div>`;

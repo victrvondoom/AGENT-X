@@ -370,6 +370,90 @@ def _score_end_to_end() -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 9. research and citation checking
+# ─────────────────────────────────────────────────────────────────────────────
+# Two numbers that can get worse and one invariant that must not move.
+#
+# Retrieval is scored in BOTH directions on purpose. Recall alone rewards a
+# system that returns its best guess for everything, which is the failure mode
+# that matters here: a consumer reading airline regulations under a hotel dispute
+# is worse off than one who was told nothing was found. So `silence` — queries
+# outside the corpus that correctly retrieve nothing — is scored alongside reach.
+#
+# The invariant is citation safety: a claim contradicted by its own source must
+# never come back `verified`. That is the check standing between a hallucinated
+# regulation and an outbound letter.
+_RESEARCH_COVERED = [
+    "unauthorized transaction on my credit card, bank refuses to reverse it",
+    "my flight was cancelled without notice, what compensation am I owed",
+    "the builder has not handed over possession of my flat after three years",
+    "my landlord is refusing to return my security deposit",
+    "I filed an RTI application and the department never replied",
+    "the airline lost my checked baggage on an international flight",
+]
+
+_RESEARCH_UNCOVERED = [
+    "my hotel in Paris overcharged me for the minibar",
+    "my gym membership auto-renewed and I want it cancelled",
+    "netflix charged me twice this month",
+    "the restaurant gave me food poisoning",
+    "my hotel cancelled my booking on arrival and I paid more elsewhere",
+]
+
+# (claim, source text, the only acceptable verdict)
+_CITATION_CASES = [
+    ("shadow reversal of the disputed amount within 10 working days",
+     "The bank must complete a shadow reversal of the disputed amount within 10 "
+     "working days of the customer reporting an unauthorized transaction.",
+     "verified"),
+    # The one a word-overlap check gets wrong: every word but the number matches.
+    ("shadow reversal of the disputed amount within 30 working days",
+     "The bank must complete a shadow reversal of the disputed amount within 10 "
+     "working days of the customer reporting an unauthorized transaction.",
+     "conflicting"),
+    ("the airline must provide hotel accommodation and meal vouchers",
+     "The bank must complete a shadow reversal within 10 working days.",
+     "unsupported"),
+]
+
+
+def _score_research() -> dict:
+    from agentx import knowledge
+
+    stats = knowledge.stats()
+    reached = sum(1 for q in _RESEARCH_COVERED if knowledge.search(q))
+    silent = sum(1 for q in _RESEARCH_UNCOVERED if not knowledge.search(q))
+
+    correct = 0
+    unsafe = 0
+    detail = []
+    for claim, source, expected in _CITATION_CASES:
+        check = knowledge.verify_citation(claim, [{"id": "s", "text": source}])
+        correct += int(check.verdict == expected)
+        # The invariant: a claim its source contradicts must never be stateable.
+        if expected != "verified" and check.safe_to_state:
+            unsafe += 1
+        detail.append(f"     {check.verdict:12s} (expected {expected:12s}) {claim[:44]}")
+
+    return {
+        "corpus_documents": stats["documents"],
+        "corpus_passages": stats["passages"],
+        "sectors": len(stats["sectors"]),
+        "covered_queries": len(_RESEARCH_COVERED),
+        "reached": reached,
+        "reach_rate": round(reached / len(_RESEARCH_COVERED), 3),
+        "uncovered_queries": len(_RESEARCH_UNCOVERED),
+        "silent": silent,
+        "silence_rate": round(silent / len(_RESEARCH_UNCOVERED), 3),
+        "citation_cases": len(_CITATION_CASES),
+        "citation_correct": correct,
+        "citation_accuracy": round(correct / len(_CITATION_CASES), 3),
+        "unverified_claims_marked_safe": unsafe,
+        "detail": detail,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 def main() -> dict:
     import tempfile
     store.use_sqlite(os.path.join(tempfile.mkdtemp(prefix="agentx-eval-"), "eval.db"))
@@ -447,6 +531,23 @@ def main() -> dict:
     print(f"   receipts signed                                  : {r['receipts_signed']}/{r['scenarios']}")
     print(f"   chains intact                                    : {r['chains_intact']}/{r['scenarios']}")
 
+    print("\n9. RESEARCH & CITATION CHECKING")
+    r = _score_research(); results["research"] = r
+    print(f"   corpus                                           : "
+          f"{r['corpus_documents']} docs · {r['corpus_passages']} passages · "
+          f"{r['sectors']} sectors")
+    print(f"   covered queries that reached the corpus          : "
+          f"{r['reach_rate']:.1%}  ({r['reached']}/{r['covered_queries']})")
+    print(f"   uncovered queries correctly answered with silence: "
+          f"{r['silence_rate']:.1%}  ({r['silent']}/{r['uncovered_queries']})")
+    print(f"   citation verdicts correct                        : "
+          f"{r['citation_accuracy']:.1%}  ({r['citation_correct']}/{r['citation_cases']})")
+    print(f"   unverified claims marked safe to state (must be 0): "
+          f"{r['unverified_claims_marked_safe']}")
+    if VERBOSE:
+        for d in r["detail"]:
+            print(d)
+
     print("\n" + "=" * 70)
     hard_failures = [
         ("policy guessed on a conditional rule", results["policy"]["guessed_when_facts_absent"] > 0),
@@ -456,18 +557,22 @@ def main() -> dict:
          results["end_to_end"]["resolved"] < results["end_to_end"]["scenarios"]),
         ("an invented figure passed grounding",
          results["grounding"]["ungrounded_rejected_rate"] < 1.0),
+        ("an unverified citation was marked safe to state",
+         results["research"]["unverified_claims_marked_safe"] > 0),
     ]
     broken = [name for name, failed in hard_failures if failed]
     print(f"HEADLINE  classification {results['classification']['top1_accuracy']:.0%}"
           f" · ambiguity {results['ambiguity']['calibration']:.0%}"
           f" · plans {results['plans']['validity_rate']:.0%}"
           f" · grounding {results['grounding']['grounded_rate']:.0%}"
+          f" · research {results['research']['reach_rate']:.0%}/"
+          f"{results['research']['silence_rate']:.0%}"
           f" · e2e {results['end_to_end']['resolution_rate']:.0%}")
     if broken:
         print("SAFETY    FAILED: " + "; ".join(broken))
     else:
-        print("SAFETY    all invariants hold "
-              "(no guessed policy, no unauthorised action, no ungrounded figure)")
+        print("SAFETY    all invariants hold (no guessed policy, no unauthorised "
+              "action,\n          no ungrounded figure, no unverified citation)")
     print(f"ran in {time.time() - t0:.1f}s")
     print("=" * 70)
     results["safety_invariants_hold"] = not broken

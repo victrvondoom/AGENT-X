@@ -1,0 +1,9 @@
+
+# Ignore source files
+*.ts
+tsconfig.json
+example.js
+test-sdk.js
+
+# Keep dist
+!dist/

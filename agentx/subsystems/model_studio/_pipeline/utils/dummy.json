@@ -1,0 +1,5 @@
+{
+  "clusterID": 1,
+  "BaseModel": "HuggingFaceTB/SmolLM2-135M-Instruct",
+  "datasets": ["HuggingFaceH4/testing_codealpaca_small", "yahma/alpaca-cleaned"]
+}

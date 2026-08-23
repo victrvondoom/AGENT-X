@@ -18,7 +18,7 @@ import socket
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, UploadFile, File, Form, Depends, Header, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -54,6 +54,21 @@ app.include_router(trustdoc_router)
 # one signing identity, one /verify.
 from app.agentx_api import router as agentx_router    # noqa: E402
 app.include_router(agentx_router)
+
+# Capability tracks whose engineering came from separate codebases. Each is
+# mounted defensively: a track that cannot import must report itself unavailable
+# at /api/agentx/tracks, never prevent Agent X from starting. That is the whole
+# reason this is a try block rather than a plain import.
+for _mod, _label in (("agentx.subsystems.learning.routes", "learning"),
+                     ("agentx.subsystems.infrastructure.routes", "infrastructure"),
+                     ("agentx.subsystems.observability.routes", "observability"),):
+    try:
+        _cap = __import__(_mod, fromlist=["router"])
+        app.include_router(_cap.router)
+    except Exception as _exc:                                    # noqa: BLE001
+        import logging
+        logging.getLogger("agentx.subsystems").warning(
+            "capability track %r is not mounted: %s", _label, _exc)
 if os.path.isdir(STATIC):
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
@@ -127,20 +142,48 @@ def _serve(name: str, fallback: str | None = None) -> str:
     return "<h1>Agent X</h1><p>UI not built yet.</p>"
 
 
+@app.get("/", response_class=HTMLResponse)
+def landing():
+    return _serve("landing.html", fallback="index.html")
+
+
 @app.get("/agentx", response_class=HTMLResponse)
 def agentx_workspace():
     """The consumer resolution workspace. `Tell Agent X what happened.`"""
     return _serve("agentx.html")
 
 
-@app.get("/", response_class=HTMLResponse)
-def landing():
-    return _serve("landing.html", fallback="index.html")
-
-
 @app.get("/app", response_class=HTMLResponse)
 def console():
+    """The Agent X application. One shell; every capability is a state inside it.
+
+    Internal navigation is `/app#/home`, `/app#/agents` and so on — states of one
+    workspace rather than separate pages, so the top bar, the rail and the
+    command palette persist and context is never lost to a page load.
+    """
     return _serve("index.html")
+
+
+# ── folded-in destinations ──────────────────────────────────────────────
+# These used to be separate pages a user had to find and remember. Each is now
+# a state inside the one application, and the old paths redirect into it rather
+# than 404 — links people already have, and anything bookmarked, keep working.
+_FOLDED = {
+    "/capabilities": "#/capabilities",
+    "/activity": "#/cases",
+    "/agentx-workspace": "#/workspace",
+}
+
+
+def _fold(target: str):
+    def _redirect():
+        return RedirectResponse(url=f"/app{target}", status_code=307)
+    return _redirect
+
+
+for _path, _state in _FOLDED.items():
+    app.add_api_route(_path, _fold(_state), methods=["GET"],
+                      include_in_schema=False)
 
 
 @app.get("/trustdoc", response_class=HTMLResponse)
@@ -341,6 +384,19 @@ class ForgetReq(BaseModel):
     workspace: str = "default"
 
 
+@app.get("/api/modes")
+def api_modes():
+    """The goal picker's options, from the one place they are declared.
+
+    Served so the UI is built from the same catalogue `ask()` routes on. Four
+    consumer options previously existed only in the HTML and were silently
+    ignored by the backend; generating the picker from here is what makes that
+    class of drift impossible rather than merely fixed.
+    """
+    from core import modes
+    return modes.catalogue()
+
+
 @app.post("/api/ask")
 def api_ask(r: AskReq):
     answer, sources = ask_memory(
@@ -384,7 +440,7 @@ def api_inspect_booking(r: InspectBookingReq):
     top = u.top
     definition = _get_def(top.problem_type) if top else None
 
-    facts = {}
+    facts: dict[str, str | int | float] = {}
     for f in _extract.extract(r.text, "receipt", use_llm=False):
         facts.setdefault(f.predicate, f.value_num if f.value_num is not None
                          else f.value_text)
@@ -589,7 +645,8 @@ def api_forget(r: ForgetReq, _: None = Depends(require_auth)):
 @app.post("/api/hold")
 def api_hold(r: HoldReq, _: None = Depends(require_auth)):
     """Place a subject under legal hold — erasure is refused until released or lapsed."""
-    return set_hold(r.subject, r.reason, r.until, _ws(r.workspace))
+    reason = r.reason or "Unknown reason"
+    return set_hold(r.subject, reason, r.until, _ws(r.workspace))
 
 
 @app.post("/api/hold/release")

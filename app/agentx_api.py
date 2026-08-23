@@ -31,7 +31,8 @@ from pydantic import BaseModel
 
 from agentx import capabilities as caps
 from agentx import case as case_mod
-from agentx import chain, demo, eligibility, engine, followup, governor, ids
+from agentx import chain, demo, documents, engine, followup, governor, ids
+from agentx import knowledge, sentinel, speech, tracks
 from agentx import ontology, outcomes, planner, policy, receipt, sealing, store, understanding
 from agentx.evidence import contradiction, graph as egraph, package as pkg
 from agentx.execution import actions as A
@@ -40,11 +41,9 @@ from agentx.sandbox import world
 
 router = APIRouter(prefix="/api/agentx", tags=["agentx"])
 
-# Text-bearing uploads Agent X can actually read. Anything else is stored and
-# hashed, and reported as having no text layer — never silently treated as empty.
-TEXT_TYPES = {"text/plain", "text/markdown", "text/csv", "message/rfc822",
-              "application/json", "text/html", ""}
-TEXT_SUFFIXES = (".txt", ".md", ".csv", ".eml", ".json", ".log", ".html")
+# Which uploads have a readable text layer, and how one is read, lives in
+# `agentx.documents` — the engine needs the same answer when evidence arrives by
+# a route other than this endpoint, and two copies of that list would drift.
 
 
 def require_auth(authorization: str | None = Header(None)) -> None:
@@ -77,9 +76,51 @@ def health():
         "engine": store.describe(),
         "providers": providers.bootstrap(),
         "ontology": ontology.summary(),
+        # What the research layer can and cannot answer from. Reported for the
+        # same reason `engine` is: the corpus covers five regulatory sectors, and
+        # a caller is entitled to know that before reading anything into a case
+        # that retrieved nothing.
+        "knowledge": knowledge.stats(),
+        "voice": speech.availability(),
+        "tracks": tracks.summary(),
+        "self_healing": {"enabled": True, "governed": True,
+                         "detail": "The sentinel scans for stalled cases. Every "
+                                   "remediation goes through the governor; an "
+                                   "action needing approval is reported, never "
+                                   "performed."},
         "autonomy_levels": governor.describe_levels(),
         "actions": [a["verb"] for a in A.catalogue()],
     }
+
+
+@router.get("/tracks")
+def tracks_index(usable_only: bool = False):
+    """Everything Agent X can do, and honestly which of it works right now.
+
+    Public: a person deciding whether this product is worth their afternoon
+    should not need a token to find out. `status` is resolved at call time by
+    importing the code behind each track, so a track cannot claim to work after
+    the module backing it has been removed.
+    """
+    return {**tracks.summary(), "tracks": tracks.catalogue(usable_only=usable_only)}
+
+
+@router.get("/knowledge")
+def knowledge_search(q: str = "", limit: int = 5):
+    """Search the regulatory corpus directly, outside any case.
+
+    Public, like `/ontology` and `/verify` — the corpus is published guidance,
+    not case data. Returning an empty list is a normal answer, and the response
+    says which sectors exist so "nothing found" can be told apart from "nothing
+    on this subject exists".
+    """
+    limit = max(1, min(limit, 20))
+    hits = knowledge.search(q, limit=limit) if q.strip() else []
+    return {"query": q, "results": hits, "count": len(hits),
+            "sectors": list(knowledge.sectors()),
+            "note": ("Retrieval is deterministic BM25 over a corpus checked into "
+                     "the repository. An empty result means this corpus does not "
+                     "cover the subject — it is not a degraded answer.")}
 
 
 @router.get("/ontology")
@@ -163,6 +204,12 @@ class IntakeReq(BaseModel):
     workspace: str = "default"
     autonomy_level: int = 2
     use_llm: bool = True
+    # How the description was given. Recorded on the chain because a dictated
+    # account is a materially different artefact from a typed one — a transcript
+    # can mishear an amount or a reference in ways typing does not, and someone
+    # auditing a case later is entitled to know which they are reading.
+    spoken: bool = False
+    language: str | None = None
 
 
 @router.post("/cases")
@@ -170,9 +217,91 @@ def create_case(r: IntakeReq, _: None = Depends(require_auth)):
     if not (r.description or "").strip():
         raise HTTPException(400, "tell Agent X what happened")
     with _conn() as conn:
-        return engine.intake(conn, description=r.description, user_ref=r.user_ref,
-                             workspace=r.workspace,
-                             autonomy_level=r.autonomy_level, use_llm=r.use_llm)
+        out = engine.intake(conn, description=r.description, user_ref=r.user_ref,
+                            workspace=r.workspace,
+                            autonomy_level=r.autonomy_level, use_llm=r.use_llm)
+        if r.spoken:
+            case_id = out["case"]["id"]
+            chain.append(conn, case_id, "intake.dictated", "HUMAN",
+                         {"language": r.language,
+                          "because": "the description was spoken, not typed",
+                          "audio_retained": False})
+            out["language_note"] = speech.language_note(r.description, r.language)
+    return out
+
+
+@router.post("/voice/transcribe")
+async def voice_transcribe(file: UploadFile = File(...),
+                           language: str | None = Form(None),
+                           _: None = Depends(require_auth)):
+    """Turn one dictation into text. The audio is never stored.
+
+    Only reached by browsers with no speech recognition of their own — where the
+    browser can transcribe locally it does, and this server never sees the audio
+    at all. A deployment with no transcriber configured answers 501 rather than
+    degrading to something that looks like it worked.
+
+    The transcript is returned, not saved. It becomes a case the moment the caller
+    posts it to `/cases`, at which point it is sealed under that case's key like
+    any other evidence — which is the only reason voice can exist in a product
+    that promises provable erasure.
+    """
+    if speech.server_transcriber() is None:
+        raise HTTPException(501, detail={
+            "error": "no_server_transcriber",
+            "detail": ("This deployment has no server-side speech provider. Use "
+                       "your browser's own speech recognition, or type instead."),
+            "availability": speech.availability(),
+        })
+    raw = await file.read()
+    try:
+        transcript = speech.transcribe(raw, media_type=file.content_type or "",
+                                       language=language)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception:
+        # Never surface a provider's raw error: it can carry the request URL and
+        #, depending on the provider, fragments of the key.
+        raise HTTPException(502, "the speech provider could not be reached")
+
+    out = transcript.as_dict()
+    out["language_note"] = speech.language_note(transcript.text, transcript.language)
+    return out
+
+
+@router.get("/sentinel")
+def sentinel_scan(workspace: str = "default", limit: int = 100):
+    """What is stuck, and what Agent X would do about it. Read-only.
+
+    Public like the rest of the read surface: an agent that claims to watch its
+    own work has to let you see the result without credentials. Nothing here
+    changes a case — `?apply=true` on the POST does, and it is token-gated.
+    """
+    limit = max(1, min(limit, 200))
+    with _conn() as conn:
+        return sentinel.sweep(conn, workspace=workspace, apply=False, limit=limit)
+
+
+class SentinelReq(BaseModel):
+    workspace: str = "default"
+    apply: bool = False
+    limit: int = 100
+
+
+@router.post("/sentinel/sweep")
+def sentinel_sweep(r: SentinelReq, _: None = Depends(require_auth)):
+    """Run the sentinel, optionally applying the remediations it is permitted.
+
+    `apply=false` is still the default here. Every remediation is put through
+    `governor.assess()` first, so this endpoint cannot perform an action the
+    autonomy level would not allow a person to trigger — self-healing is not a
+    way around the approval gate, and a stall needing escalation is reported for
+    a human rather than acted on.
+    """
+    limit = max(1, min(r.limit, 200))
+    with _conn() as conn:
+        return sentinel.sweep(conn, workspace=r.workspace, apply=r.apply,
+                              limit=limit)
 
 
 @router.get("/cases")
@@ -225,34 +354,41 @@ def add_evidence(case_id: str, r: EvidenceReq, _: None = Depends(require_auth)):
 async def upload_evidence(case_id: str, file: UploadFile = File(...),
                           kind: str = Form("screenshot"),
                           _: None = Depends(require_auth)):
-    """Attach a file. Text is read; anything else is hashed and honestly labelled.
+    """Attach a file. What could be read is read; the rest is hashed and labelled.
 
-    There is no OCR here and none is pretended. A PDF or a photograph is stored,
-    hashed and listed as evidence with no text layer, and the response says so —
-    so a user can see that Agent X holds their document without believing it has
-    read it. Wiring a real extraction service in means one provider, not a change
-    to this endpoint's contract.
+    Plain text and a PDF's own text layer are extracted. A scan, a photograph or
+    an encrypted PDF is stored, hashed and listed as evidence with no text layer,
+    and the response says which of those it was — so a user can see that Agent X
+    holds their document without believing it has read it.
+
+    There is still no OCR, and none is pretended. Transcribing a scan requires a
+    hosted vision model, and putting a network call with non-reproducible output
+    inside the evidence path would break the property that a case can be re-run
+    deterministically. A scan is reported as a scan.
     """
     raw = await file.read()
     name = file.filename or "upload"
-    is_text = (file.content_type in TEXT_TYPES
-               or name.lower().endswith(TEXT_SUFFIXES))
-    text = ""
-    note = None
-    if is_text:
-        text = raw.decode("utf-8", errors="replace")
-    else:
-        note = (f"{file.content_type or 'this file type'} has no text layer Agent X "
-                f"can read. It is stored and hashed as evidence, and no facts were "
-                f"extracted from it.")
+    read = documents.extract(raw, name, file.content_type)
     with _conn() as conn:
         try:
-            out = engine.attach(conn, case_id, kind=kind, text=text, raw=raw,
+            out = engine.attach(conn, case_id, kind=kind, text=read.text, raw=raw,
                                 filename=name, media_type=file.content_type)
         except ValueError as e:
             raise HTTPException(400, str(e))
-    if note:
-        out["note"] = note
+        case = case_mod.get(conn, case_id)
+    # How the text was obtained travels with the response, because "we extracted
+    # 4,000 characters from a PDF" and "we decoded a text file" warrant different
+    # amounts of trust in the facts derived downstream.
+    out["extraction"] = read.as_dict()
+    # Advisory, never a refusal: the document is already stored and hashed above.
+    # Uploading the wrong file fails quietly otherwise — no facts are extracted,
+    # the case stays short of evidence, and the user who thinks they supplied it
+    # waits for an answer that cannot come.
+    out["relevance"] = documents.relevance(
+        read.text, (case or {}).get("description") or "", name,
+        facts_found=len(out.get("facts") or [])).as_dict()
+    if read.note:
+        out["note"] = read.note
     return out
 
 

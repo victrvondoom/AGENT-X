@@ -85,8 +85,8 @@ a{color:var(--dim)}
       which returns each field with a confidence signal and a citation back to the page region.</div>
     <input type="file" id="file">
     <div style="margin-top:.7rem">
-      <button onclick="upload()">Extract</button>
-      <button class="ghost" onclick="loadDemo()">Use a recorded extraction</button>
+      <button type="button" onclick="upload()">Extract</button>
+      <button type="button" class="ghost" onclick="loadDemo()">Use a recorded extraction</button>
     </div>
     <div id="upErr"></div>
   </div>
@@ -184,11 +184,11 @@ async function refresh(){
           <b>${esc(f.name)}</b> <span style="color:var(--held);font-size:.78rem">${esc(f.reason)}</span>
           <input type="text" id="v_${f.id}" value="${esc(f.value??'')}" style="margin-top:.45rem">
           <div style="margin-top:.5rem">
-            <button onclick="rule('${f.id}','ACCEPT')">Accept</button>
-            <button class="ghost" onclick="rule('${f.id}','CORRECT')">Save correction</button>
+            <button type="button" onclick="rule('${f.id}','ACCEPT')">Accept</button>
+            <button type="button" class="ghost" onclick="rule('${f.id}','CORRECT')">Save correction</button>
           </div></div>`).join('')
     : `<div>Nothing outstanding. Status <b>${esc(j.status)}</b>.
-         ${j.status==='APPROVED' ? '<div style="margin-top:.7rem"><button onclick="finalize()">Generate &amp; sign</button></div>' : ''}</div>`;
+         ${j.status==='APPROVED' ? '<div style="margin-top:.7rem"><button type="button" onclick="finalize()">Generate &amp; sign</button></div>' : ''}</div>`;
   if(j.pending.length) show(2); else if(j.status==='APPROVED') show(3);
 }
 
@@ -265,7 +265,7 @@ async function verifyPanel(){
             the whole chain in 3D</a>, live from this database.</li>
       </ol>
       <div style="margin-top:.6rem">
-        <button onclick="checkInclusion()">Publish checkpoint &amp; prove inclusion</button>
+        <button type="button" onclick="checkInclusion()">Publish checkpoint &amp; prove inclusion</button>
       </div>
       <div id="inclOut" style="margin-top:.6rem;font-size:.8rem"></div>
       <textarea class="mono" readonly>${c ? esc(JSON.stringify(c, null, 2)) : 'certificate not issued yet'}</textarea>

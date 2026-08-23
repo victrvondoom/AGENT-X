@@ -302,6 +302,64 @@ class TestLetterGroundingUnderAttack:
         assert report["grounded"] is False
         assert report["money_tokens"]
 
+    def test_invented_statute_is_discarded(self, monkeypatch, conn, case):
+        """The model keeps every FIGURE honest and invents the law instead.
+
+        This is the harder attack and it used to succeed: the figure check found
+        nothing to object to, so a letter citing two statutes the case never
+        established went out. A disputes team's first move is to look up the rule
+        you cited, which makes an invented citation more damaging than an
+        invented amount, not less.
+        """
+        from llm import client
+        monkeypatch.setattr(
+            client, "chat",
+            lambda *a, **k: ("Dear Sir or Madam,\n\nI am writing about a duplicate "
+                             "charge. Under Section 75 of the Consumer Credit Act "
+                             "1974 and Regulation 14 of the Payment Services "
+                             "Regulations 2017, you must refund me.\n\nRegards"))
+        body, _ = letters.compose(conn, case, {"remedy": "merchant_refund",
+                                               "counterparty": "Kartly"})
+        assert "Section 75" not in body
+        assert "Consumer Credit Act" not in body
+        assert "Payment Services Regulations" not in body
+
+    def test_rule_citation_with_nothing_established_is_refused(self, conn, case):
+        report = letters.grounding_report(
+            "Under Section 75 of the Consumer Credit Act 1974 you must refund.",
+            conn, case["id"])
+        assert report["rules_grounded"] is False
+        assert report["rule_citations"], "the rejected citations must be named"
+        assert all(c["verdict"] in ("partial", "unsupported", "conflicting")
+                   for c in report["rule_citations"])
+
+    def test_an_established_rule_may_still_be_cited(self, conn, case):
+        """The check must not make Agent X unable to cite the law it did establish.
+
+        A grounding rule that rejects everything is not a safety property, it is
+        a broken feature — so the positive direction is pinned alongside the
+        negative one.
+        """
+        from agentx import eligibility, engine
+        # Investigate first: the fixture case has no policy findings until the
+        # analysis runs, and a skipped positive test proves nothing.
+        engine.investigate(conn, case["id"], use_llm=False)
+        applicable = [p for p in eligibility.load_policies(conn, case["id"])
+                      if p["applies"] == "yes" and p.get("citation")]
+        assert applicable, "expected this case to establish at least one policy"
+        cited = applicable[0]
+        report = letters.grounding_report(
+            f"The basis for this request is {cited['title']} — {cited['citation']}.",
+            conn, case["id"])
+        assert report["rules_grounded"] is True, report["rule_citations"]
+
+    def test_a_letter_citing_no_law_is_not_penalised(self, conn, case):
+        report = letters.grounding_report(
+            "Please confirm in writing what you intend to do, and by when.",
+            conn, case["id"])
+        assert report["rules_grounded"] is True
+        assert report["rule_citations"] == []
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # the governor under direct attack

@@ -1,0 +1,31 @@
+# Core Framework & Environment
+python-dotenv==1.0.1
+
+# Portia AI SDK (Core)
+portia-sdk-python[google]>=0.6.2
+
+# APIs & External Services
+tweepy==4.16.0
+twilio==8.10.0
+requests==2.32.3
+
+# Geolocation Processing
+geopy==2.4.0
+
+# Web Scraping & Data Collection
+beautifulsoup4==4.12.2
+feedparser==6.0.11
+aiohttp==3.10.10
+
+
+# # UI Dashboard (updated for Python 3.11 compatibility)
+# streamlit==1.27.0
+# folium==0.14.0
+# streamlit-folium==0.13.0
+# pandas>=2.2.3
+
+# UI Dashboard (updated for Python 3.13 compatibility)
+streamlit==1.48.1
+folium==0.20.0
+streamlit-folium==0.25.1
+pandas==2.3.2

@@ -4,9 +4,9 @@
 
 # Agent X
 
-**Verifiable operations on regulated data — including the newest one: acting on your behalf, and proving what it did.**
+**Consumer-driven agent tool kit — agents that act on your behalf and prove what they did.**
 
-Tell it what happened · it investigates, plans, acts, follows up, and verifies · every step signed and hash-chained
+Tell it what happened · it investigates, plans, asks before anything consequential, acts, follows up, and verifies · every step signed and hash-chained, checkable without trusting this code
 
 [![▶ Try the live demo](https://img.shields.io/badge/▶_TRY_THE_LIVE_DEMO-running_on_AWS_EC2-6d28d9?style=for-the-badge&labelColor=1a1533)](https://43-204-114-100.nip.io/)
 
@@ -79,9 +79,194 @@ no CockroachDB is configured.
 core/trust/          audit.py · gate.py · certificate.py     ← the shared spine
 core/forget.py       erasure pipeline
 pipelines/document/  extract · review · generate · sign · self-verify
-agentx/              consumer resolution — cases, evidence, policy, planning,
-                     execution, follow-up, receipts — reusing the spine above
+agentx/              consumer resolution — cases, evidence, policy, research,
+                     planning, execution, follow-up, receipts — reusing the
+                     spine above
+agentx/knowledge/    the research layer — a checked-in corpus of published
+                     regulatory guidance, deterministic BM25 retrieval, and
+                     four-state citation verification
 ```
+
+### Say it out loud
+
+Typing a coherent account of a dispute is the first barrier a complaint system puts
+in front of the person it claims to help, and it selects hard: against people who
+are angry, in a hurry, on a phone, or writing in a second language. So `/agentx`
+takes dictation — press the microphone and describe the problem. The transcript
+enters the same intake path as typed text: same understanding, same evidence graph,
+same chain.
+
+**The default path never sends the audio anywhere.** The browser's own recogniser
+transcribes locally, so the recording stays on the device and this server never
+receives it. A hosted transcriber (`AGENT_X_GROQ_API_KEY`) exists only for browsers
+with no recogniser, self-registers only when configured, and answers `501` otherwise
+— the same discipline `live:smtp` follows, never a silent fallback.
+
+**Audio is never stored** — not on disk, not in the database, not in a log. That is
+not caution for its own sake: a voice clip is biometric-adjacent personal data, and
+this is a product whose central claim is that it can prove what it erased. The way
+to keep that claim without building a second erasure path for audio is to never
+retain any. The *transcript* becomes case evidence, sealed under the case's own key
+and crypto-shreddable like everything else, and the chain records that the account
+was dictated — a transcript can mishear an amount in ways typing cannot, and an
+auditor is entitled to know which they are reading.
+
+Voice makes it trivial to speak a language the classifier cannot read. Agent X says
+so rather than letting a confident misclassification through: the catalogue matches
+on English wording, and a Tamil or Portuguese transcript is flagged as such with the
+user's own words kept exactly as spoken.
+
+### Goals in the chat, including two that answer from real sources
+
+The console's chat has a goal picker — Research, Analyze, Decide, and a consumer
+group. Those options and their behaviour used to live in two places, and had
+already drifted: **four of the five consumer goals did nothing.** Clicking "Hidden
+Fees" sent `capability=hidden_fees`, fell past every branch in `ask()`, and
+returned the default answer. The button worked; the feature did not exist.
+
+They are now declared once in `core/modes.py`, the picker is *built* from
+`GET /api/modes`, and `ask()` routes from the same dict — so an option cannot be
+offered without being routed. Two new consumer goals are marked **grounded**,
+meaning they answer from real retrieved material rather than the model's
+recollection:
+
+| Track | Answers from | When it has nothing |
+|---|---|---|
+| **Escalation Route** | the regulatory corpus — the actual complaint ladder (RBI Ombudsman, AirSewa, CPGRAMS, RERA) | says the corpus does not cover that sector, and names no regulator from memory |
+| **Where Am I** | every open case's live stage — what it is waiting on, and the one thing that would move it | says you have no open cases and offers to start one |
+| **Needs You** | only what genuinely needs you now, across all cases, most urgent first | says nothing needs you — it will not invent a task to seem useful |
+| **What It's Worth** | Agent X's own closed cases — median recovery, follow-ups needed, how often escalation was required | says there is too little history and gives **no figure at all** |
+
+Every one of those refusals is the point. A model answering "who do I escalate to"
+from memory sends someone to spend a week writing to the wrong office; an invented
+"typically £200" is what people decide whether to bother on; and a case summary
+that describes a case you do not have is worse than silence.
+
+The picker also carries an **input** track — *Speak instead of typing* — because
+the picker is where someone looks to find out what this thing can do, and voice
+should not be discoverable only by noticing an icon. It is not a goal: it changes
+how you ask, not how Agent X answers, and it never reaches `ask()` as a capability.
+
+### It watches its own work
+
+`followup.py` is the clock — it fires the chases and escalations that are *due*.
+It can only ever look at rows that scheduled themselves, which leaves a gap:
+**what is stuck for a reason nothing scheduled?** An execution that failed and was
+never retried. A plan whose step has not moved in a fortnight. An approval quietly
+rotting while the user believes Agent X is working. A hash chain that no longer
+verifies. None of those raise an error at the time — they are silences, and a
+product that promises to chase a company until it pays cannot itself go quiet.
+
+`agentx/sentinel.py` runs the loop **detect → diagnose → remediate → verify →
+record** over Agent X's own cases, and differs from the pattern it came from in
+three ways that matter:
+
+- **Detection is deterministic.** Not a model reading logs and forming an opinion —
+  every finding is a query over real rows against a declared threshold, so a stall
+  either exists or does not, identically on every run.
+- **Remediation is governed.** This is the dangerous part of any self-healing
+  system: acting unasked is the whole point of it. So the sentinel proposes through
+  `governor.assess()` like every other actor, and an action needing approval is
+  *reported, never performed* — it does not even raise the approval request, because
+  a watchdog manufacturing approvals trains people to accept things they did not
+  start. Escalation is not in its vocabulary at all: a watchdog deciding to involve
+  a regulator because a step looked slow is exactly the failure this refuses.
+  `tests/test_agentx_sentinel.py` sweeps every remediation against every autonomy
+  level and confidence to prove nothing escapes.
+- **Verification re-reads.** A fix is not believed because it returned; the case is
+  re-examined and the stall must actually be gone — the same discipline
+  `runner.verify()` applies to a merchant's reply.
+
+Agent X's equivalent of "is the container healthy" is **does the record still
+verify**, and that one stall is never auto-repaired. A watchdog that rewrites an
+audit chain until it verifies is indistinguishable from one that forges it, so a
+broken chain is raised to a human, always.
+
+```bash
+curl localhost:8080/api/agentx/sentinel      # read-only: what is stuck, and what it would do
+```
+
+### Every case stage says what to do about it
+
+`STATE_COPY` already said what a state *is* ("Waiting on them"). It did not say
+what to **do** about it, and those are different questions — chasing is right at
+`WAITING_EXTERNAL` and wrong at `ESCALATED`, where the first line is no longer who
+you are talking to.
+
+So all 11 case states now declare a track: what Agent X is doing, what you can do,
+which chat tracks help here, and what can happen next. The next states are
+*derived* from `case.TRANSITIONS` rather than restated, so a state that gains a
+transition cannot end up described by a stale track — and a test asserts every
+state has a track, so adding one without guidance fails the build.
+
+Alongside it, **attention** is computed from the case's own rows: deadlines
+approaching or passed, questions waiting, approvals pending, blocking
+contradictions. Deadline urgency is read from the case's own `days_left`, not from
+wall-clock time — sandbox cases run on a movable clock, and subtracting `now()`
+would report every one of them as long overdue. The pattern came from a project
+that shipped a table of hardcoded weather warnings keyed by district; the pattern
+was worth having and the canned data was not, so an alert here is only ever
+something true of a row in the database.
+
+### Options, not an answer
+
+A single ranked list of remedies has to collapse three things a consumer weighs
+differently — how much comes back, how likely it is to work, how much can go wrong
+— into one number, using *our* weights. Someone who needs £40 this week and someone
+who wants the maximum they are owed are not choosing badly relative to each other.
+
+So alongside the recommendation, Agent X computes the **Pareto frontier** over open
+remedies: the routes that nothing else beats on *everything at once*. Where one
+route dominates, there is no choice to present and Agent X says so. Where several
+genuinely differ, it shows them and names what each is best at — and lists the ruled-
+out routes with the reason, because "this is strictly worse than that one, here is
+why" is a stronger thing to tell someone than silently dropping it.
+
+Scenario D is the real case: £350 of statutory compensation at medium risk against a
+£92.50 partial refund at low risk. Neither dominates, so Agent X does not pretend to
+know which you want. It is additive — the ranked list and the recommendation are
+unchanged, and the recommended remedy is always itself on the frontier.
+
+Speed is a deliberate omission from the objectives: elapsed-time figures exist only
+per counterparty and only from sandbox scenarios on a simulated clock, so a
+per-remedy "days" number would be a fabrication wearing a real measurement's clothes.
+
+### Deciding and informing are different jobs
+
+`agentx/policy.py` decides what someone is **owed**, from declarative conditions
+evaluated against the case's facts. It is narrow on purpose — a rule only earns a
+place there if it can be evaluated without a model.
+
+`agentx/knowledge/` supplies the other half of a usable answer: **which** ombudsman,
+**within** how many days, quoting **what**. It retrieves published guidance and it is
+strictly subordinate — a retrieved passage never establishes an entitlement, never
+sets an amount, and never unlocks an action.
+
+Retrieval is deterministic BM25 over a corpus checked into the repository, so a
+case's research is reproducible and can sit on the hash chain. It **declines**: the
+corpus covers five regulatory sectors, and a query it does not cover retrieves
+nothing rather than the nearest thing — a hotel billing dispute gets silence, not
+airline regulations. Because it searches the user's own words rather than the
+assigned label, it also recovers from Agent X's own misclassifications: a case
+reading *"the builder has not handed over possession of my flat"* classifies as an
+airline problem (the ontology has no housing) and still retrieves the RERA
+possession complaint route.
+
+**A letter may only cite law the case established.** The grounding check on
+outbound letters previously covered amounts, dates and references but not legal
+claims — so a rewrite that kept every figure honest and added *"under Section 75 of
+the Consumer Credit Act 1974 you must refund me"* passed, and went out. It no
+longer does: every rule-shaped phrase in a letter is verified against the citations
+the case actually established, and an unverified one discards the rewrite. A
+disputes team's first move is to look up the rule you cited, which makes an
+invented citation more damaging than an invented figure, not less
+(`tests/test_agentx_adversarial.py`).
+
+Citation verdicts are four-valued — `verified`, `partial`, `unsupported`,
+`conflicting` — never boolean, because *"we could not confirm this"* and *"this is
+contradicted"* are different facts. `conflicting` is the one that earns its keep: a
+word-overlap check passes "reversal within **30** working days" against a source
+saying **ten**, since every word but the number matches.
 
 **Verify any of it without us:** `db/verify_chain.sql` re-derives every hash in raw SQL,
 and `templates/verify_offline.html` checks the ECDSA signature in your browser with no
@@ -262,7 +447,18 @@ python -m evals.resolution            # --verbose to see every individual miss
 7. GOVERNOR            action x level x confidence       260 combinations
                        consequential actions escaping approval  0
 8. END TO END          5 scenarios, 5 resolved, 5 signed, 5 chains intact
+9. RESEARCH            covered queries that reached corpus   100%
+                       uncovered queries answered w/ silence 100%
+                       citation verdicts correct             100%
+                       unverified claims marked safe to state  0
 ```
+
+Part 9 scores retrieval in **both** directions, because recall alone rewards a
+system that returns its best guess for everything — and a consumer reading airline
+regulations under a hotel dispute is worse off than one told nothing was found. So
+*silence* on the five queries this corpus does not cover is scored equally with
+*reach* on the six it does. The citation invariant is the one that matters: a claim
+its own source contradicts must never come back `verified`.
 
 Part 7 sweeps every action verb against every autonomy level and confidence and
 counts the ways a consequential action could escape an approval. The target is
@@ -274,16 +470,17 @@ vocabulary but omitted from the governor's own list, so driving a counterparty's
 web form counted as reversible and could run unattended. The governor now
 derives that set from the vocabulary instead of restating it.
 
-## Built for this hackathon
+## Why one store
 
-Agent X's CockroachDB-native memory engine was **built new for this hackathon** — the knowledge graph as
-relational tables, vectors in the C-SPANN index, the atomic transactional `forget`, the `AS OF SYSTEM TIME`
-proof, the per-subject crypto-shred, and the signed erasure certificate. Unifying the graph, the vectors,
-and the audit trail into **one CockroachDB store** is precisely what makes forgetting a **single ACID
-transaction** and the certificate provable from the database itself — something impossible when the graph
-and vectors live in two separate stores. That single-store design is the structural core: a **single ACID
-cascade**, **`AS OF SYSTEM TIME`** as the proof mechanism, **object-locked crypto-shred certificates**, and
-an **exhaustive recursive-CTE blast-radius**.
+The graph, the vectors and the audit trail live in **one CockroachDB store**, and that is what makes the
+guarantees possible rather than aspirational. Erasure is a **single ACID transaction** — cascade delete,
+shared-node invalidation and crypto-shred either all commit or none do — which is unachievable when the
+graph and the vectors sit in two systems that can disagree. `AS OF SYSTEM TIME` makes the database its own
+deletion receipt, with no separate history table to trust. Recursive CTEs make the blast radius exhaustive
+by construction instead of by enumeration.
+
+The same store carries the document pipeline and the resolution engine, so all three write to one hash
+chain and are verified by one `/verify`. Adding a capability is a new `kind`, not a second trust system.
 
 ## Honest limitations
 
@@ -294,6 +491,14 @@ an **exhaustive recursive-CTE blast-radius**.
 
 **Consumer resolution:**
 - Policy analysis is an engineering artefact traceable to a cited source — every receipt says so — not legal advice.
+- The research corpus covers **five** regulatory sectors — airlines, banking, government services, healthcare and housing — in 75 documents. Telecom and e-commerce are **not** covered: the source material for them was a set of live scrapers rather than authored content, and an empty sector is reported as empty rather than filled in. `GET /api/agentx/health` publishes the real per-sector counts, and a query outside those sectors retrieves nothing.
+- The corpus is India-weighted (RBI, DGCA, RERA, RTI). `policy.py`'s declarative corpus is UK/EU/US-weighted. They are deliberately not cross-checked against each other, because a rule that governs in one regime says nothing about another — retrieval informs the complaint route, and only `policy.py` decides entitlement.
+- Retrieval's relevance floor is calibrated against this corpus and separates its test set by a margin of roughly 8%. It discriminates well on those cases and should not be assumed to generalise far beyond them; `tests/test_agentx_knowledge.py` fails from both directions if a corpus change collapses the gap.
+- **Scanned documents are not transcribed.** A PDF's own text layer is extracted (`pypdf`); a scan or photograph is stored, hashed, and reported as having no text layer. Transcribing it would require a hosted vision model, and a non-reproducible network call inside the evidence path would break the property that a case can be re-run deterministically — which `evals/` depends on. Agent X says it could not read the file rather than guessing at it.
+- Document relevance is **advisory and never blocks an upload**. Agent X cannot know what a user's evidence is for, so a document that looks unrelated is flagged and stored anyway.
+- **Voice** depends on the visitor's browser. Local speech recognition is a Chromium/Safari feature; Firefox has none, and there a deployment without `AGENT_X_GROQ_API_KEY` offers typing only. The mic path has been verified through the API and the page, but **not driven in a real browser in this repository's test suite** — `SpeechRecognition` and `MediaRecorder` cannot be exercised headlessly here.
+- Voice **transcription accuracy is the transcriber's, not Agent X's**. A misheard amount or reference is a wrong fact from a trusted-looking source, which is why dictation is recorded on the chain and why the letter-grounding and citation checks apply to spoken cases exactly as they do to typed ones.
+- The trade-off frontier ranks on **three** objectives (value, confidence, declared risk). Time-to-resolution is not among them, for the reason given above. A route that is faster but worth less will not appear as a distinct choice until that measurement is real.
 - One real integration ships: `live:smtp` sends genuine email over SMTP behind the same interface the sandbox mailbox uses, self-registering only when `AGENT_X_SMTP_*` is fully configured — see `.env.example`. No live merchant-API, payment or browser integration ships; adding one is a `Provider` implementation + a registry entry, not a rewrite. Sandbox providers are labelled `sandbox` everywhere, including on the signed receipt, and are never presented as a real-world action.
 - A receipt's signature proves *issuance*, not *truth* — the same limitation `core/trust/certificate.py` already documents for erasure certificates, and closed the same way: pin the published key, or check the receipt's attested chain position against the live case.
 - On the local SQLite engine, `AS OF SYSTEM TIME` proof-of-prior-existence and C-SPANN vector recall are unavailable (CockroachDB-only); `GET /api/agentx/health` reports this explicitly rather than silently degrading.

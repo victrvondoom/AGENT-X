@@ -28,7 +28,8 @@ transitions between stages. That is why it is short relative to what it does.
 """
 from __future__ import annotations
 
-from agentx import capabilities, chain, eligibility, ids, normalize, planner, policy
+from agentx import (capabilities, chain, eligibility, ids, normalize, planner,
+                    policy, research, stages, tradeoffs)
 from agentx import case as case_mod
 from agentx import store, understanding
 from agentx.evidence import contradiction, extract, graph as egraph, package as pkg
@@ -252,6 +253,18 @@ def investigate(conn, case_id: str, *, use_llm: bool = True) -> dict:
     c = case_mod.get(conn, case_id)
     definition = get_definition(c["problem_type"]) if c["problem_type"] else None
     if definition is None:
+        # Agent X's ontology does not model this problem, so there is no
+        # entitlement to compute and the case correctly stops for input. But
+        # "we cannot classify this" and "we have nothing for you" are different
+        # answers, and this is where research earns its place: the corpus is
+        # searched by the user's own words, not by a problem type, so it can
+        # still surface the right complaint route for a dispute the catalogue
+        # has never heard of. Nothing here classifies the case or unblocks it —
+        # it attaches reading, and the state machine is untouched.
+        sources = research.gather(conn, c)
+        research.persist(conn, case_id, c["workspace"], sources)
+        chain.append(conn, case_id, "research.gathered", "AGENT",
+                     {**research.summary(sources), "unclassified": True})
         _move(conn, case_id, "NEEDS_INPUT", "no problem definition to work from")
         return snapshot(conn, case_id)
 
@@ -284,6 +297,18 @@ def investigate(conn, case_id: str, *, use_llm: bool = True) -> dict:
                   "applies": [f.policy.id for f in findings if f.applies == "yes"],
                   "unknown": [f.policy.id for f in findings if f.applies == "unknown"],
                   "jurisdiction": jurisdiction, "because": why_j})
+
+    # ── research ──────────────────────────────────────────────────────────
+    # Strictly downstream of the policy analysis above, and strictly incapable of
+    # changing it: retrieval supplies the procedural detail (which ombudsman,
+    # what deadline, what the published band is) that a correct entitlement still
+    # needs to be actionable. It sets no fact and unlocks no action. Most cases
+    # retrieve nothing, because the corpus covers five sectors and consumer
+    # problems do not — that is recorded as honestly as a hit.
+    sources = research.gather(conn, c, findings=findings)
+    research.persist(conn, case_id, c["workspace"], sources)
+    chain.append(conn, case_id, "research.gathered", "AGENT",
+                 research.summary(sources))
 
     # ── deadlines ─────────────────────────────────────────────────────────
     _record_deadlines(conn, case_id, definition, findings, facts)
@@ -936,7 +961,7 @@ def snapshot(conn, case_id: str) -> dict:
     last_seq, head_hash = chain.head(conn, case_id)
     claims = _claims(conn, case_id, c)
 
-    return {
+    out = {
         "case": {**c, "state_copy": case_mod.state_copy(c["state"]),
                  "amount": normalize.fmt_money(c["amount_minor"], c["currency"])},
         "headline": eligibility.headline(remedies, c["amount_minor"], c["currency"]),
@@ -947,7 +972,12 @@ def snapshot(conn, case_id: str) -> dict:
         "claims": [cl.as_dict() for cl in claims],
         "contradictions": contradiction.open_contradictions(conn, case_id),
         "policies": eligibility.load_policies(conn, case_id),
+        "research": research.load(conn, case_id),
         "remedies": remedies,
+        # Which of those remedies are genuinely different choices rather than
+        # strictly worse ones. Additive: `remedies` and `headline` are unchanged,
+        # and nothing here re-ranks anything.
+        "tradeoffs": tradeoffs.analyse(remedies),
         "plan": plan.as_dict() if plan else None,
         "approvals": pending_approvals(conn, case_id),
         "executions": executions,
@@ -961,6 +991,11 @@ def snapshot(conn, case_id: str) -> dict:
                   "verify_url": f"/api/agentx/cases/{case_id}/chain"},
         "engine": store.describe(),
     }
+    # Stage track + live alerts. Built from the assembled snapshot because it
+    # reads the case's own deadlines, questions and approvals — it is a view over
+    # what is already here, not another query.
+    out["briefing"] = stages.briefing(out)
+    return out
 
 
 def _systemic(conn, c: dict) -> dict | None:

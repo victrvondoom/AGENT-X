@@ -1,0 +1,39 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Optional dependencies for vendored capability subsystems.
+#
+# NOT installed by requirements.txt, and deliberately so. Agent X's own tracks —
+# consumer resolution, documents, research, erasure, voice, recovery, audit,
+# learning, infrastructure, observability — need none of these and work without
+# them. Installing this file turns on the remaining tracks.
+#
+# Each track reports itself unavailable with a reason while its dependency is
+# absent, rather than degrading into something that looks like it worked.
+#
+#   pip install -r requirements-capabilities.txt
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── Emergency Response ──────────────────────────────────────────────────────
+# Triage taxonomy and urgency assessment need only these; dispatch additionally
+# needs the notification credentials in .env.example.
+portia-sdk-python[google]>=0.6.2
+requests>=2.32
+geopy>=2.4
+tweepy>=4.16
+
+# ── Agent Observability ─────────────────────────────────────────────────────
+# The API is already present via other packages; these add the exporter and the
+# instrumentation the vendored package builds on.
+opentelemetry-sdk>=1.42
+opentelemetry-exporter-otlp>=1.42
+opentelemetry-instrumentation>=0.63b0
+wrapt>=1.14
+
+# ── Learning Memory (cloud mode only) ───────────────────────────────────────
+# Demo mode is the default and needs nothing. Uncomment for CLASSROOM_MODE=cloud.
+# cognee @ git+https://github.com/RajdeepKushwaha5/cognee.git@96135c086
+
+# ── Model Studio ────────────────────────────────────────────────────────────
+# GPU-bound. Left commented because installing it on a machine without a GPU
+# produces a track that imports and still cannot train — the worst outcome.
+# oumi
+# vllm

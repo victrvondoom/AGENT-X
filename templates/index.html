@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agent X</title>
+<title>Agent X — workspace</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 24' fill='none' stroke='%23a8a8b0' stroke-width='2.4' stroke-linecap='round'><path d='M16.97 7.97A7.2 7.2 0 1 0 16.97 16.03'/><circle cx='19.6' cy='12' r='1.25' fill='%23a8a8b0' stroke='none'/><circle cx='22.6' cy='12' r='0.95' fill='%23a8a8b0' stroke='none' opacity='.6'/><circle cx='25.2' cy='12' r='0.62' fill='%23a8a8b0' stroke='none' opacity='.32'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -93,11 +93,35 @@
   .dark .thsh{background:linear-gradient(90deg,rgba(161,161,170,.5) 20%,rgba(228,230,236,.95) 50%,rgba(161,161,170,.5) 80%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text}
   button:not(:disabled):active{transform:scale(.97)}
   input:focus-visible,textarea:focus-visible{box-shadow:0 0 0 3px rgba(228,230,236,.15)}
+
+/* ── Keyboard accessibility ───────────────────────────────────────────────
+   A visible focus ring on every interactive element. Only `:focus-visible`,
+   so it appears for keyboard users and never as a click artefact — the reason
+   focus rings usually get deleted, and then keyboard users lose their place
+   entirely. Uses the brand token so it reads as part of the design rather than
+   the browser default. */
+a:focus-visible, button:focus-visible, [tabindex]:focus-visible,
+input:focus-visible, textarea:focus-visible, select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+/* Skip link — the first thing a keyboard or screen-reader user meets, so the
+   nav can be jumped past instead of tabbed through on every view change. */
+.skip-link{
+  position:absolute; left:-9999px; top:0; z-index:200;
+  padding:10px 16px; border-radius:0 0 8px 0; font-size:13.5px; font-weight:500;
+  background:#8b5cf6; color:#fff;
+}
+.skip-link:focus{left:0}
+
   .drop-hot{border-color:#a8a8b0!important;background-color:rgba(228,230,236,.07)!important}
   @media (prefers-reduced-motion:reduce){.wv-f,.wv-b{animation:none}.card-enter>*,.mscale,.view-enter{animation:none}.lift:hover{transform:none}.glow::before{display:none}.skel{animation:none}.thsh{animation:none;-webkit-text-fill-color:#71717a;color:#71717a}}
 </style>
 </head>
 <body class="min-h-screen text-slate-900 antialiased dark:text-slate-100">
+<a href="#main" class="skip-link">Skip to content</a>
 <div aria-hidden="true" class="bg-grid fixed inset-0 -z-10 bg-[#fafafb] dark:bg-[#111115]"></div>
 <div aria-hidden="true" class="pointer-events-none fixed inset-x-0 bottom-0 -z-10 h-44 overflow-hidden" style="-webkit-mask-image:linear-gradient(0deg,#000,#000 28%,transparent);mask-image:linear-gradient(0deg,#000,#000 28%,transparent)">
   <svg class="wv wv-b" viewBox="0 0 1440 90" preserveAspectRatio="none" fill="none"><path d="M0 55 Q120 30 240 55 T480 55 T720 55 T960 55 T1200 55 T1440 55" stroke="#b9b9c0" stroke-width="1.5" stroke-opacity=".13" stroke-linecap="round"/></svg>
@@ -111,23 +135,27 @@
       <a href="/" class="serif hidden text-lg leading-none tracking-tight transition hover:opacity-70 md:inline">Agent X</a>
     </div>
     <div class="relative mb-4 hidden md:block">
-      <button id="wsBtn" class="flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-300 px-2.5 py-2 text-sm transition hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-900">
+      <button type="button" id="wsBtn" class="flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-300 px-2.5 py-2 text-sm transition hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-900">
         <span class="flex min-w-0 items-center gap-2"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg><span id="wsName" class="truncate font-medium">Default</span></span>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
       </button>
       <div id="wsMenu" class="absolute left-0 right-0 top-11 z-30 hidden rounded-xl border border-zinc-300 bg-white p-1.5 shadow-xl dark:border-zinc-800 dark:bg-[#232329]"></div>
     </div>
-    <nav class="flex flex-col gap-1" id="nav">
-      <button data-view="triage" title="Triage" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
+    <nav class="flex flex-col gap-1" id="nav" aria-label="Sections">
+      <button type="button" data-view="workspace" title="Workspace — open a problem and resolve it" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 8.4 8 10 4.6-1.6 8-5 8-10V6z"/><path d="m9 12 2 2 4-4"/></svg><span class="hidden md:inline">Workspace</span></button>
+      <button type="button" data-view="capabilities" title="Everything Agent X can do" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg><span class="hidden md:inline">Capabilities</span></button>
+      <button type="button" data-view="triage" title="Triage" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/></svg><span class="hidden md:inline">Triage</span></button>
-      <button data-view="cases" title="Problem Cases" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
+      <button type="button" data-view="cases" title="Problem Cases" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="hidden md:inline">Cases</span></button>
-      <button data-view="systems" title="Subjects" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
+      <button type="button" data-view="systems" title="Subjects" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="hidden md:inline">Subjects</span></button>
 
-      <button data-view="upload" title="Upload" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
+      <button type="button" data-view="upload" title="Upload" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg><span class="hidden md:inline">Upload</span></button>
-      <button data-view="graph" title="Graph" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
+      <button type="button" data-view="graph" title="Graph" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="m7 7.5 3.5 8.5M17 7.5 13.5 16M7.2 6.4h9.6"/></svg><span class="hidden md:inline">Graph</span></button>
       <a href="/spine" title="The Trust Spine — two pipelines on one hash chain, in 3D" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="10" width="4" height="4" rx="1"/><rect x="10" y="10" width="4" height="4" rx="1"/><rect x="17" y="10" width="4" height="4" rx="1"/><path d="M7 12h3M14 12h3"/></svg>
@@ -137,9 +165,9 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>
         <span>Cascade</span>
       </a>
-      <button data-view="curation" title="Curation" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
+      <button type="button" data-view="curation" title="Curation" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3.5 11 7l3.5 1.5L11 10l-1.5 3.5L8 10 4.5 8.5 8 7z"/><path d="m18 13 .7 1.9 1.9.7-1.9.7L18 19l-.7-1.9-1.9-.7 1.9-.7z"/></svg><span class="hidden md:inline">Curation</span></button>
-      <button data-view="timeline" title="Timeline" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
+      <button type="button" data-view="timeline" title="Timeline" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="hidden md:inline">Timeline</span></button>
       <a href="/verify" title="Verify a certificate" class="nav flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span class="hidden md:inline">Verify</span></a>
@@ -147,7 +175,7 @@
     <div id="chatsPane" class="mt-5 hidden min-h-0 flex-1 flex-col md:flex">
       <div class="mb-1.5 flex items-center justify-between px-2.5">
         <span class="text-[11px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">Chats</span>
-        <button id="newChatSide" aria-label="New chat" title="New chat" class="rounded p-0.5 text-zinc-400 transition hover:text-zinc-900 dark:hover:text-white"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button type="button" id="newChatSide" aria-label="New chat" title="New chat" class="rounded p-0.5 text-zinc-400 transition hover:text-zinc-900 dark:hover:text-white"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
       </div>
       <div id="chatList" class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto"></div>
     </div>
@@ -157,8 +185,8 @@
       </div>
       <div class="flex items-center gap-2 px-1 text-xs text-zinc-500 dark:text-zinc-400"><span id="dot" class="h-2 w-2 shrink-0 rounded-full bg-amber-500"></span><span id="dotxt" class="hidden md:inline">starting…</span></div>
       <div class="flex items-center justify-center gap-1.5 md:flex-col md:items-stretch md:gap-1">
-      <button id="setBtn" aria-label="Settings" title="Model & API key" class="flex h-8 w-8 items-center justify-center gap-2.5 rounded-md border border-zinc-300 px-0 text-zinc-600 transition hover:bg-zinc-100 md:h-auto md:w-full md:justify-start md:border-0 md:px-2.5 md:py-2 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="hidden text-sm md:inline">Settings</span></button>
-      <button id="theme" aria-label="Toggle theme" title="Toggle theme" class="flex h-8 w-8 items-center justify-center gap-2.5 rounded-md border border-zinc-300 px-0 text-zinc-600 transition hover:bg-zinc-100 md:h-auto md:w-full md:justify-start md:border-0 md:px-2.5 md:py-2 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900">
+      <button type="button" id="setBtn" aria-label="Settings" title="Model & API key" class="flex h-8 w-8 items-center justify-center gap-2.5 rounded-md border border-zinc-300 px-0 text-zinc-600 transition hover:bg-zinc-100 md:h-auto md:w-full md:justify-start md:border-0 md:px-2.5 md:py-2 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="hidden text-sm md:inline">Settings</span></button>
+      <button type="button" id="theme" aria-label="Toggle theme" title="Toggle theme" class="flex h-8 w-8 items-center justify-center gap-2.5 rounded-md border border-zinc-300 px-0 text-zinc-600 transition hover:bg-zinc-100 md:h-auto md:w-full md:justify-start md:border-0 md:px-2.5 md:py-2 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900">
         <svg class="block shrink-0 dark:hidden" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
         <svg class="hidden shrink-0 dark:block" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>
         <span class="hidden text-sm md:inline">Theme</span>
@@ -167,12 +195,31 @@
     </div>
   </aside>
 
-  <main class="flex min-h-0 flex-1 flex-col">
-    <div class="mx-auto flex h-full w-full max-w-3xl flex-col px-4 md:px-6">
+  <main id="main" tabindex="-1" class="flex min-h-0 flex-1 flex-col overflow-hidden relative">
+
+    <!-- Workspace. The resolution engine's own UI, mounted in place filling the entire content area -->
+    <section data-view="workspace" class="hidden min-h-0 flex-1 flex-col w-full h-full">
+      <iframe id="wsFrame" title="Workspace" src="about:blank"
+              class="min-h-0 w-full flex-1 h-full border-0" style="display:block; width:100%; height:100%; border:none;"></iframe>
+    </section>
+
+    <!-- Content Views: Centered container for standard sections -->
+    <div id="contentViews" class="mx-auto flex min-h-0 flex-1 w-full max-w-3xl flex-col px-4 md:px-6 overflow-y-auto">
+
+      <!-- Capabilities. What Agent X can do, and honestly what is not connected. -->
+      <section data-view="capabilities" class="hidden min-h-0 flex-1 overflow-y-auto py-8">
+        <div class="mx-auto w-full max-w-4xl px-6">
+          <h1 class="serif text-3xl tracking-tight">What Agent X can do</h1>
+          <p class="mt-2 max-w-2xl text-sm text-zinc-600 dark:text-zinc-400">
+            You never have to pick one. Describe what you need and Agent X works out which of these
+            it takes. This list is here so you can see what is underneath.</p>
+          <div id="capBody" class="mt-8 text-sm text-zinc-500">Loading…</div>
+        </div>
+      </section>
 
       <section data-view="triage" class="flex min-h-0 flex-1 flex-col py-6">
         <div class="relative mb-3 flex shrink-0 items-center justify-between gap-2">
-          <button id="threadBtn" class="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-900">
+          <button type="button" id="threadBtn" class="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-900">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/></svg>
             <span id="threadTitle" class="truncate">New chat</span>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
@@ -183,7 +230,7 @@
             <span id="ctxSep" class="hidden text-zinc-300 dark:text-zinc-700">·</span>
             <span id="ctxSys" class="hidden shrink-0 whitespace-nowrap" style="font-family:'Geist Mono',ui-monospace,monospace"></span>
           </div>
-          <button id="newChat" class="flex shrink-0 items-center gap-1 rounded-lg border border-zinc-300 px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:text-white"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>New chat</button>
+          <button type="button" id="newChat" class="flex shrink-0 items-center gap-1 rounded-lg border border-zinc-300 px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:text-white"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>New chat</button>
           <div id="threadMenu" class="absolute left-0 top-10 z-30 hidden max-h-80 w-80 overflow-y-auto rounded-xl border border-zinc-300 bg-white p-1.5 shadow-xl dark:border-zinc-800 dark:bg-[#232329]"></div>
         </div>
         <div id="demoCard" class="hidden shrink-0 mb-3 rounded-xl border border-violet-300/60 bg-violet-50/40 p-4 dark:border-violet-800/40 dark:bg-violet-950/15">
@@ -192,13 +239,13 @@
               <div class="mono text-[10px] uppercase tracking-[0.18em] text-violet-600 dark:text-violet-400">start here</div>
               <h3 class="serif mt-0.5 text-xl tracking-tight">The 60-second demo</h3>
             </div>
-            <button id="demoCardX" aria-label="Dismiss" class="-mr-1 -mt-1 shrink-0 rounded p-1 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-200"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+            <button type="button" id="demoCardX" aria-label="Dismiss" class="-mr-1 -mt-1 shrink-0 rounded p-1 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-200"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
           </div>
           <ol class="mt-3 space-y-2 text-sm text-zinc-600 dark:text-zinc-300">
-            <li class="flex items-start gap-2.5"><span class="mono mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-500/15 text-[11px] font-medium text-violet-700 dark:text-violet-300">1</span><span><button id="demoStep1" class="text-left font-medium text-violet-700 underline decoration-dotted underline-offset-2 transition hover:text-violet-800 dark:text-violet-400 dark:hover:text-violet-300">Add a record about a subject</button> &mdash; drop a file or paste text in Upload.</span></li>
-            <li class="flex items-start gap-2.5"><span class="mono mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-500/15 text-[11px] font-medium text-violet-700 dark:text-violet-300">2</span><span><button id="demoStep2b" class="text-left font-medium text-violet-700 underline decoration-dotted underline-offset-2 transition hover:text-violet-800 dark:text-violet-400 dark:hover:text-violet-300">Ask a question about that subject</button> &mdash; a graph-grounded answer.</span></li>
-            <li class="flex items-start gap-2.5"><span class="mono mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-500/15 text-[11px] font-medium text-violet-700 dark:text-violet-300">3</span><span><button id="demoStep2" class="font-medium text-violet-700 underline decoration-dotted underline-offset-2 transition hover:text-violet-800 dark:text-violet-400 dark:hover:text-violet-300">Forget &amp; Prove it in Subjects</button> &mdash; watch the 3-part proof + signed certificate, then re-ask and see it say <b class="font-semibold text-zinc-700 dark:text-zinc-200">not on record</b>.</span></li>
-            <li class="flex items-start gap-2.5"><span class="mono mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-500/15 text-[11px] font-medium text-violet-700 dark:text-violet-300">4</span><span><button id="demoStep4" class="text-left font-medium text-violet-700 underline decoration-dotted underline-offset-2 transition hover:text-violet-800 dark:text-violet-400 dark:hover:text-violet-300">Open the Graph</button> &mdash; the erased subject's nodes are gone (its ghosts greyed out).</span></li>
+            <li class="flex items-start gap-2.5"><span class="mono mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-500/15 text-[11px] font-medium text-violet-700 dark:text-violet-300">1</span><span><button type="button" id="demoStep1" class="text-left font-medium text-violet-700 underline decoration-dotted underline-offset-2 transition hover:text-violet-800 dark:text-violet-400 dark:hover:text-violet-300">Add a record about a subject</button> &mdash; drop a file or paste text in Upload.</span></li>
+            <li class="flex items-start gap-2.5"><span class="mono mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-500/15 text-[11px] font-medium text-violet-700 dark:text-violet-300">2</span><span><button type="button" id="demoStep2b" class="text-left font-medium text-violet-700 underline decoration-dotted underline-offset-2 transition hover:text-violet-800 dark:text-violet-400 dark:hover:text-violet-300">Ask a question about that subject</button> &mdash; a graph-grounded answer.</span></li>
+            <li class="flex items-start gap-2.5"><span class="mono mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-500/15 text-[11px] font-medium text-violet-700 dark:text-violet-300">3</span><span><button type="button" id="demoStep2" class="font-medium text-violet-700 underline decoration-dotted underline-offset-2 transition hover:text-violet-800 dark:text-violet-400 dark:hover:text-violet-300">Forget &amp; Prove it in Subjects</button> &mdash; watch the 3-part proof + signed certificate, then re-ask and see it say <b class="font-semibold text-zinc-700 dark:text-zinc-200">not on record</b>.</span></li>
+            <li class="flex items-start gap-2.5"><span class="mono mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-500/15 text-[11px] font-medium text-violet-700 dark:text-violet-300">4</span><span><button type="button" id="demoStep4" class="text-left font-medium text-violet-700 underline decoration-dotted underline-offset-2 transition hover:text-violet-800 dark:text-violet-400 dark:hover:text-violet-300">Open the Graph</button> &mdash; the erased subject's nodes are gone (its ghosts greyed out).</span></li>
           </ol>
         </div>
         <div id="log" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation" class="flex min-h-0 flex-1 flex-col space-y-3 overflow-y-auto rounded-xl border border-zinc-300 bg-white p-4 dark:border-zinc-800 dark:bg-[#1a1a1f]"></div>
@@ -209,20 +256,20 @@
           <div class="mb-2 flex items-center justify-between px-0.5 text-xs">
             <div class="flex items-center gap-2">
               <!-- Level 1 Trigger: Category -->
-              <button id="catPopoverBtn" aria-haspopup="true" aria-expanded="false" class="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 shadow-sm transition hover:border-violet-500 dark:border-zinc-800 dark:bg-[#1a1a1f] dark:text-zinc-300">
+              <button type="button" id="catPopoverBtn" aria-haspopup="true" aria-expanded="false" class="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 shadow-sm transition hover:border-violet-500 dark:border-zinc-800 dark:bg-[#1a1a1f] dark:text-zinc-300">
                 <span id="catPopoverLabel">General Tasks</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
               </button>
 
               <!-- Level 2 Trigger: Capability Goal -->
-              <button id="capPopoverBtn" aria-haspopup="true" aria-expanded="false" class="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 shadow-sm transition hover:border-violet-500 dark:border-zinc-800 dark:bg-[#1a1a1f] dark:text-zinc-300">
+              <button type="button" id="capPopoverBtn" aria-haspopup="true" aria-expanded="false" class="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 shadow-sm transition hover:border-violet-500 dark:border-zinc-800 dark:bg-[#1a1a1f] dark:text-zinc-300">
                 <span id="capPopoverLabel">Goal: Auto-Detect</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
               </button>
             </div>
 
             <!-- Level 3/4 Trigger: Advanced Response Options -->
-            <button id="configPopoverBtn" aria-haspopup="true" aria-expanded="false" class="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-500 shadow-sm transition hover:border-violet-500 hover:text-zinc-700 dark:border-zinc-800 dark:bg-[#1a1a1f] dark:text-zinc-400">
+            <button type="button" id="configPopoverBtn" aria-haspopup="true" aria-expanded="false" class="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-500 shadow-sm transition hover:border-violet-500 hover:text-zinc-700 dark:border-zinc-800 dark:bg-[#1a1a1f] dark:text-zinc-400">
               <span id="configPopoverLabel">Options</span>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
             </button>
@@ -232,14 +279,14 @@
           <div id="catPopoverPanel" class="hidden absolute left-0 bottom-full mb-2 z-50 w-72 max-w-[90vw] rounded-xl border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-[#1a1a1f]">
             <div class="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Select Category</div>
             <div class="space-y-1">
-              <button id="catOptGen" class="w-full flex items-center justify-between rounded-lg p-2 text-left text-xs font-medium text-zinc-800 hover:bg-violet-500/10 hover:text-violet-600 dark:text-zinc-200 transition">
+              <button type="button" id="catOptGen" class="w-full flex items-center justify-between rounded-lg p-2 text-left text-xs font-medium text-zinc-800 hover:bg-violet-500/10 hover:text-violet-600 dark:text-zinc-200 transition">
                 <div>
                   <div class="font-semibold">General Tasks</div>
                   <div class="text-[10px] text-zinc-400 font-normal">Research, Create, Analyze, Build, Decide, Learn</div>
                 </div>
                 <span id="catGenCheck" class="text-violet-600 dark:text-violet-400 font-bold">✓</span>
               </button>
-              <button id="catOptBook" class="w-full flex items-center justify-between rounded-lg p-2 text-left text-xs font-medium text-zinc-800 hover:bg-amber-500/10 hover:text-amber-600 dark:text-zinc-200 transition">
+              <button type="button" id="catOptBook" class="w-full flex items-center justify-between rounded-lg p-2 text-left text-xs font-medium text-zinc-800 hover:bg-amber-500/10 hover:text-amber-600 dark:text-zinc-200 transition">
                 <div>
                   <div class="font-semibold">Online Booking & App Issues</div>
                   <div class="text-[10px] text-zinc-400 font-normal">Flight cancellations, hidden fees, dispute letters</div>
@@ -254,22 +301,20 @@
             <div class="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Select Goal</div>
             
             <div id="genCapList" class="space-y-1">
-              <button data-cap="auto" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs font-medium text-violet-600 bg-violet-500/10 dark:text-violet-300">Auto-Detect</button>
-              <button data-cap="research" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Research</button>
-              <button data-cap="create" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Create</button>
-              <button data-cap="analyze" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Analyze</button>
-              <button data-cap="build" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Build</button>
-              <button data-cap="decide" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Decide</button>
-              <button data-cap="learn" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Learn</button>
+              <button type="button" data-cap="auto" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs font-medium text-violet-600 bg-violet-500/10 dark:text-violet-300">Auto-Detect</button>
+              <button type="button" data-cap="research" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Research</button>
+              <button type="button" data-cap="create" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Create</button>
+              <button type="button" data-cap="analyze" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Analyze</button>
+              <button type="button" data-cap="build" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Build</button>
+              <button type="button" data-cap="decide" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Decide</button>
+              <button type="button" data-cap="learn" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Learn</button>
             </div>
 
-            <div id="bookCapList" class="hidden space-y-1">
-              <button data-cap="verify_booking" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs font-medium text-amber-600 bg-amber-500/10 dark:text-amber-300">Verify Booking</button>
-              <button data-cap="hidden_fees" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Hidden Fees</button>
-              <button data-cap="refund_policy" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Refund Policy</button>
-              <button data-cap="report_issue" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Report Issue</button>
-              <button data-cap="dispute_letter" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Dispute Letter</button>
-            </div>
+            <!-- Built at load from GET /api/modes, the same catalogue ask() routes
+                 on. These options used to be hardcoded here and four of the five
+                 were silently ignored by the backend; generating them is what
+                 stops that happening again. -->
+            <div id="bookCapList" class="hidden space-y-1"></div>
           </div>
 
           <!-- LEVEL 4 POPUP: Style & Format Options Panel -->
@@ -304,7 +349,7 @@
           <!-- Text Prompt Input -->
           <div class="flex shrink-0 items-end gap-2 rounded-2xl border border-zinc-300 bg-white p-2 pl-4 shadow-sm transition focus-within:border-violet-500 dark:border-zinc-800 dark:bg-[#1a1a1f]">
             <textarea id="q" rows="1" placeholder="Describe what you want to accomplish…" class="max-h-36 flex-1 resize-none bg-transparent py-1.5 text-sm outline-none placeholder:text-zinc-400 dark:placeholder:text-zinc-500"></textarea>
-            <button id="bAsk" disabled aria-label="Ask" class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-zinc-950 text-white transition hover:bg-zinc-800 disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+            <button type="button" id="bAsk" disabled aria-label="Ask" class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-zinc-950 text-white transition hover:bg-zinc-800 disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
           </div>
         </div>
 
@@ -317,7 +362,7 @@
             <h2 class="serif text-2xl tracking-tight">Problem Cases</h2>
             <p class="mt-1 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">Persistent Problem Cases &amp; Case Graphs recorded in CockroachDB memory. Track disputes, audits, and real-world consumer resolutions.</p>
           </div>
-          <button id="refreshCasesBtn" class="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium transition hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-900">Refresh Cases</button>
+          <button type="button" id="refreshCasesBtn" class="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium transition hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-900">Refresh Cases</button>
         </div>
         <div id="casesList" class="mt-5 space-y-3">
           <div class="text-xs text-zinc-400">Loading cases...</div>
@@ -329,7 +374,7 @@
         <div class="flex flex-col items-start gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div><h2 class="serif text-2xl tracking-tight">Subjects</h2>
           <p class="mt-1 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">Every subject in this workspace's memory. Forget &amp; Prove one and it's verifiably erased — documents, graph nodes, edges, and its encryption key crypto-shredded.</p></div>
-          <button id="addSysBtn" class="shrink-0 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"><span class="mr-1 text-violet-500">+</span>Add record</button>
+          <button type="button" id="addSysBtn" class="shrink-0 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"><span class="mr-1 text-violet-500">+</span>Add record</button>
         </div>
         <div id="sysgrid" class="mt-5 grid grid-cols-1 gap-2.5 lg:grid-cols-2"></div>
       </section>
@@ -349,7 +394,7 @@
         <textarea id="paste" rows="4" placeholder="Paste a record or note…" class="inp w-full resize-y"></textarea>
         <div class="mt-2 flex gap-2">
           <input id="upsys" placeholder="Subject name (e.g. billing-service)" class="inp flex-1">
-          <button id="bUp" disabled class="btn-primary">Ingest</button>
+          <button type="button" id="bUp" disabled class="btn-primary">Ingest</button>
         </div>
         <div id="upmsg" class="mt-3 text-sm"></div>
       </section>
@@ -360,7 +405,7 @@
           <p class="mt-1 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">The live graph extracted from your records. Click a node to see what it connects to; Forget &amp; Prove a subject, then refresh — watch its nodes vanish (shared ones greyed as ghosts).</p></div>
           <div class="flex items-center gap-2">
             <input id="gsearch" placeholder="find a node…" aria-label="Search the graph" class="mono w-36 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm outline-none placeholder:text-zinc-400 focus:border-violet-500 dark:border-zinc-800 dark:bg-[#1a1a1f] dark:placeholder:text-zinc-500 sm:w-52">
-            <button id="greload" class="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-900">Refresh</button>
+            <button type="button" id="greload" class="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-900">Refresh</button>
           </div>
         </div>
         <div class="relative mt-5 min-h-[300px] flex-1">
@@ -373,7 +418,7 @@
           <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-slate-400"></span>ghost · erased</span>
           <span id="glegDem" class="hidden flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-amber-400"></span>demoted</span>
           <span id="gmeta"></span>
-          <button id="gask" class="hidden rounded-md border border-violet-500/40 px-2 py-0.5 font-medium text-violet-600 transition hover:bg-violet-500/10 dark:text-violet-400"></button>
+          <button type="button" id="gask" class="hidden rounded-md border border-violet-500/40 px-2 py-0.5 font-medium text-violet-600 transition hover:bg-violet-500/10 dark:text-violet-400"></button>
         </div>
       </section>
 
@@ -384,14 +429,14 @@
         <div data-glow class="glow mt-5 rounded-xl border border-zinc-300 bg-white/60 p-4 dark:border-zinc-800 dark:bg-[#1a1a1f]/50">
           <div class="flex items-start justify-between gap-3">
             <div><h3 class="text-sm font-semibold">Stale references</h3><p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Surviving nodes and edges whose text still mentions an already-erased subject. <span class="font-medium text-emerald-600 dark:text-emerald-400">Free · 0 tokens</span></p></div>
-            <button id="curRun" class="shrink-0 rounded-full bg-zinc-950 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200">Scan</button>
+            <button type="button" id="curRun" class="shrink-0 rounded-full bg-zinc-950 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200">Scan</button>
           </div>
           <div id="curBody" class="mt-3"></div>
         </div>
         <div data-glow class="glow mt-3 rounded-xl border border-zinc-300 bg-white/60 p-4 dark:border-zinc-800 dark:bg-[#1a1a1f]/50">
           <div class="flex items-start justify-between gap-3">
             <div><h3 class="text-sm font-semibold">Aging records</h3><p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Records not reviewed in over 180 days — likely stale by age. Demote to sink a subject (reversible), or restore it. <span class="font-medium text-emerald-600 dark:text-emerald-400">Free · 0 tokens</span></p></div>
-            <button id="curAgeRun" class="shrink-0 rounded-full bg-zinc-950 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200">Scan</button>
+            <button type="button" id="curAgeRun" class="shrink-0 rounded-full bg-zinc-950 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200">Scan</button>
           </div>
           <div id="curAgeBody" class="mt-3"></div>
         </div>
@@ -421,8 +466,8 @@
     <input id="wsModalInput" maxlength="40" placeholder="e.g. API docs, Onboarding, Vendor configs" class="mt-4 w-full rounded-lg border border-zinc-300 bg-white px-3.5 py-2.5 text-sm outline-none placeholder:text-zinc-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/25 dark:border-zinc-800 dark:bg-[#1a1a1f] dark:placeholder:text-zinc-500">
     <div id="wsModalMsg" class="mt-2 min-h-[1rem] text-xs"></div>
     <div class="mt-3 flex justify-end gap-2">
-      <button id="wsModalCancel" class="rounded-lg px-3.5 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900">Cancel</button>
-      <button id="wsModalOk" class="rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200">Create workspace</button>
+      <button type="button" id="wsModalCancel" class="rounded-lg px-3.5 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900">Cancel</button>
+      <button type="button" id="wsModalOk" class="rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200">Create workspace</button>
     </div>
   </div>
 </div>
@@ -433,8 +478,8 @@
     <p class="mt-3 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">This permanently <b class="font-medium text-zinc-700 dark:text-zinc-200">hard-deletes</b> <span id="wsDelName" class="mono text-zinc-700 dark:text-zinc-200"></span> and all of its knowledge — graph and vectors. This can't be undone.</p>
     <div id="wsDelMsg" class="mt-2 min-h-[1rem] text-xs"></div>
     <div class="mt-4 flex justify-end gap-2">
-      <button id="wsDelCancel" class="rounded-lg px-3.5 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900">Cancel</button>
-      <button id="wsDelOk" class="rounded-full bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700">Delete</button>
+      <button type="button" id="wsDelCancel" class="rounded-lg px-3.5 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900">Cancel</button>
+      <button type="button" id="wsDelOk" class="rounded-full bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700">Delete</button>
     </div>
   </div>
 </div>
@@ -467,14 +512,14 @@
       <p class="mt-1.5 text-xs text-zinc-400 dark:text-zinc-500">Single-tenant guard — one shared token gates every mutating API route. Set <span class="mono">AGENT_X_AUTH_TOKEN</span> before any public deploy.</p>
       <div id="secTokenRow" class="mt-2.5 hidden gap-2">
         <input id="secToken" type="password" autocomplete="off" placeholder="paste access token…" class="mono flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs outline-none placeholder:text-zinc-400 focus:border-violet-500 dark:border-zinc-800 dark:bg-[#1a1a1f] dark:placeholder:text-zinc-500">
-        <button id="secSet" class="shrink-0 rounded-lg border border-zinc-300 px-3 py-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900">Save</button>
-        <button id="secClear" class="shrink-0 rounded-lg border border-zinc-300 px-3 py-2 text-xs font-medium text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-900">Clear</button>
+        <button type="button" id="secSet" class="shrink-0 rounded-lg border border-zinc-300 px-3 py-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900">Save</button>
+        <button type="button" id="secClear" class="shrink-0 rounded-lg border border-zinc-300 px-3 py-2 text-xs font-medium text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-900">Clear</button>
       </div>
     </div>
     <div id="setMsg" class="mt-3 min-h-[16px] text-xs"></div>
     <div class="mt-4 flex items-center justify-end">
-      <div class="flex gap-2"><button id="setCancel" class="rounded-lg px-3.5 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900">Cancel</button>
-      <button id="setSave" class="rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-200">Save</button></div>
+      <div class="flex gap-2"><button type="button" id="setCancel" class="rounded-lg px-3.5 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900">Cancel</button>
+      <button type="button" id="setSave" class="rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-200">Save</button></div>
     </div>
   </div>
 </div>
@@ -487,8 +532,8 @@
     <textarea id="addText" rows="5" placeholder="Paste the record or notes…" class="mt-2 w-full resize-y rounded-lg border border-zinc-300 bg-white px-3.5 py-2.5 text-sm outline-none placeholder:text-zinc-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/25 dark:border-zinc-800 dark:bg-[#1a1a1f] dark:placeholder:text-zinc-500"></textarea>
     <div id="addMsg" class="mt-2 min-h-[16px] text-xs"></div>
     <div class="mt-4 flex justify-end gap-2">
-      <button id="addCancel" class="rounded-lg px-3.5 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900">Cancel</button>
-      <button id="addOk" class="rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-200">Add record</button>
+      <button type="button" id="addCancel" class="rounded-lg px-3.5 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900">Cancel</button>
+      <button type="button" id="addOk" class="rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-200">Add record</button>
     </div>
   </div>
 </div>
@@ -499,8 +544,8 @@
     <p class="mt-1.5 text-sm text-zinc-500 dark:text-zinc-400">Writes are <b class="font-semibold text-zinc-700 dark:text-zinc-200">token-gated</b> — an erasure product should never let anonymous visitors delete data. <b class="font-semibold text-zinc-700 dark:text-zinc-200">Judges:</b> paste the access token from the submission notes to run Forget &amp; Prove. Browsing, recall, the graph, and <span class="mono">/verify</span> stay open.</p>
     <input id="tokInput" type="password" autocomplete="off" placeholder="access token" class="mono mt-3 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none placeholder:text-zinc-400 focus:border-violet-500 dark:border-zinc-800 dark:bg-[#1a1a1f] dark:placeholder:text-zinc-500">
     <div class="mt-4 flex justify-end gap-2">
-      <button id="tokCancel" class="rounded-lg px-3.5 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900">Cancel</button>
-      <button id="tokOk" class="rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200">Unlock</button>
+      <button type="button" id="tokCancel" class="rounded-lg px-3.5 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900">Cancel</button>
+      <button type="button" id="tokOk" class="rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200">Unlock</button>
     </div>
   </div>
 </div>
@@ -561,12 +606,40 @@
  let curView='triage';
  const navActive='bg-zinc-100 font-medium text-zinc-900 shadow-[inset_2px_0_0_#74747c] dark:bg-[#232329] dark:text-white dark:shadow-[inset_2px_0_0_#a8a8b0]';
  const navIdle='text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-white';
- function show(v){
+ // The views a URL may address, so a bad hash cannot blank the interface.
+ const VIEWS = ['triage','workspace','capabilities','cases','systems','upload',
+                'graph','curation','timeline'];
+ // Older links and redirects that predate the current view names.
+ const VIEW_ALIAS = {activity:'cases', evidence:'verify', settings:'triage',
+                     agents:'capabilities', home:'workspace'};
+
+ function show(v, opts){
+   v = VIEW_ALIAS[v] || v;
+   // `verify` is a full page of its own, not a view — send the user there.
+   if(v === 'verify'){ location.href = '/verify'; return; }
+   if(!VIEWS.includes(v)) v = 'triage';
    curView=v;
+   // Keep the address bar honest so a view can be linked, bookmarked and
+   // reached with the back button. `replace` on the initial paint avoids
+   // pushing a duplicate entry the user would have to press back through.
+   const want = '#/' + v;
+   if(location.hash !== want){
+     if(opts && opts.replace) history.replaceState(null,'',want);
+     else location.hash = want;
+   }
    document.querySelectorAll('section[data-view]').forEach(s=>s.classList.toggle('hidden',s.dataset.view!==v));
+   const cv = $('contentViews');
+   if(cv) cv.classList.toggle('hidden', v === 'workspace');
    const _sec=document.querySelector('section[data-view="'+v+'"]');  // gentle view-enter fade+rise (skip graph — never transform the vis-network canvas)
    if(_sec&&v!=='graph'){_sec.classList.remove('view-enter');void _sec.offsetWidth;_sec.classList.add('view-enter');}
-   document.querySelectorAll('.nav').forEach(b=>{b.className='nav flex items-center justify-center md:justify-start gap-2.5 rounded-md px-2 md:px-2.5 py-2 text-sm '+(b.dataset.view===v?navActive:navIdle);});
+   document.querySelectorAll('.nav').forEach(b=>{
+     const on = b.dataset.view===v;
+     b.className='nav flex items-center justify-center md:justify-start gap-2.5 rounded-md px-2 md:px-2.5 py-2 text-sm '+(on?navActive:navIdle);
+     // Colour alone does not tell a screen reader which section is open.
+     if(b.tagName==='BUTTON') b.setAttribute('aria-current', on?'page':'false');
+   });
+   if(v==='workspace')loadWorkspace();
+   if(v==='capabilities')loadCapabilities();
    if(v==='cases')loadCases();
    if(v==='systems')loadSystems();
    if(v==='graph')loadGraph();
@@ -574,7 +647,55 @@
    if(v==='timeline')loadTimeline();
  }
  document.querySelectorAll('button.nav').forEach(b=>b.onclick=()=>show(b.dataset.view));
- show('triage');
+
+ function viewFromHash(){
+   return (location.hash || '').replace(/^#\/?/, '').split('/')[0] || 'triage';
+ }
+ // Back/forward moves between views rather than leaving the app.
+ window.addEventListener('hashchange', ()=>{
+   const v = VIEW_ALIAS[viewFromHash()] || viewFromHash();
+   if(v !== curView) show(v);
+ });
+ show(viewFromHash(), {replace:true});
+
+
+ // ── Workspace ────────────────────────────────────────────────────────────
+ // Loaded on first open rather than at page load: it boots its own engine and
+ // there is no reason to pay for that until someone asks for it.
+ function loadWorkspace(){
+   const f = $('wsFrame');
+   if(f && f.getAttribute('src') === 'about:blank') f.setAttribute('src','/agentx?embed=1');
+ }
+
+ // ── Capabilities ─────────────────────────────────────────────────────────
+ let _tracks = null;
+ async function loadCapabilities(){
+   const el = $('capBody'); if(!el) return;
+   if(!_tracks){
+     try{ _tracks = (await (await fetch('/api/agentx/tracks')).json()).tracks || []; }
+     catch(e){ el.textContent = 'Could not load the capability list.'; return; }
+   }
+   const card = t => `<div class="rounded-xl border ${t.usable
+       ? 'border-zinc-300 dark:border-zinc-800'
+       : 'border-dashed border-zinc-300 opacity-70 dark:border-zinc-800'} p-5">
+       <div class="flex items-start gap-3">
+         <div class="flex-1 font-medium">${esc(t.name)}</div>
+         <span class="shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-medium ${t.usable
+           ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+           : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'}">${
+             t.usable ? 'ready' : (t.status==='service' ? 'needs service' : 'not connected')}</span>
+       </div>
+       <p class="mt-2 text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-400">${esc(t.summary)}</p>
+       ${(t.examples||[]).length ? `<p class="mt-3 text-xs text-zinc-400">${esc(t.examples[0])}</p>` : ''}
+       ${!t.usable && t.detail ? `<p class="mt-3 text-xs text-zinc-400">${esc(t.detail)}</p>` : ''}
+     </div>`;
+   const on = _tracks.filter(t=>t.usable), off = _tracks.filter(t=>!t.usable);
+   const group = (title, rows) => rows.length ? `
+     <h2 class="mb-4 mt-8 text-[11px] font-medium uppercase tracking-[.14em] text-zinc-400">${title}</h2>
+     <div class="grid gap-3 sm:grid-cols-2">${rows.map(card).join('')}</div>` : '';
+   el.innerHTML = group(`Ready to use — ${on.length}`, on)
+                + group(`Not connected — ${off.length}`, off);
+ }
 
  async function loadCases(){
    const el = $('casesList');
@@ -700,7 +821,7 @@
  // Citation source peek — a right slide-over showing the ORIGINAL wiki doc(s) behind a chip.
  // Server-side ledger-gated: after a forget the /source route 404s, so the peek vanishes with the
  // evidence (it must never contradict Proof-of-Forgetting). askAbout stays, as a secondary action.
- function srcPeekHead(n){return '<div class="flex items-start justify-between gap-2"><div><div class="mono text-[10px] uppercase tracking-[0.18em] text-violet-600 dark:text-violet-400">source</div><h3 class="serif mt-0.5 text-xl tracking-tight">'+esc(n)+'</h3></div><button id="srcPeekX" aria-label="Close source" class="-mr-1 -mt-1 shrink-0 rounded p-1 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-200"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>';}
+ function srcPeekHead(n){return '<div class="flex items-start justify-between gap-2"><div><div class="mono text-[10px] uppercase tracking-[0.18em] text-violet-600 dark:text-violet-400">source</div><h3 class="serif mt-0.5 text-xl tracking-tight">'+esc(n)+'</h3></div><button type="button" id="srcPeekX" aria-label="Close source" class="-mr-1 -mt-1 shrink-0 rounded p-1 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-200"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>';}
  async function openSource(name){const p=$('srcPeek'),panel=$('srcPeekPanel');if(!p||!panel)return;
    panel.innerHTML=srcPeekHead(name)+'<div class="mt-4 space-y-3"><div class="skel h-24 w-full"></div></div>';
    p.classList.remove('hidden');
@@ -711,7 +832,7 @@
          '<div class="mt-3 space-y-3">'+docs.map(d=>'<div class="rounded-xl border border-zinc-200 bg-zinc-50/60 p-4 dark:border-zinc-800 dark:bg-[#1a1a1f]"><div class="text-xs font-semibold text-zinc-700 dark:text-zinc-200">'+esc(d.title)+'</div><p class="mt-1.5 text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-300">'+esc(d.text)+'</p></div>').join('')+'</div>';
      }else{body='<p class="mt-4 text-sm text-zinc-500 dark:text-zinc-400">No original source document is available for this citation here.</p>';}
    }catch(e){body='<p class="mt-4 text-sm text-red-500">Could not load the source.</p>';}
-   body+='<button id="srcPeekAsk" class="mt-5 w-full shrink-0 rounded-lg border border-violet-500/40 px-3 py-2 text-sm font-medium text-violet-600 transition hover:bg-violet-500/10 dark:text-violet-400">Ask about this &rarr;</button>';
+   body+='<button type="button" id="srcPeekAsk" class="mt-5 w-full shrink-0 rounded-lg border border-violet-500/40 px-3 py-2 text-sm font-medium text-violet-600 transition hover:bg-violet-500/10 dark:text-violet-400">Ask about this &rarr;</button>';
    panel.innerHTML=srcPeekHead(name)+body;
    $('srcPeekX').onclick=closeSource;
    $('srcPeekAsk').onclick=()=>{closeSource();askAbout(name);};}
@@ -813,14 +934,93 @@
     });
   }
 
-  document.querySelectorAll('.cap-opt-btn').forEach(btn => {
-    btn.onclick = () => {
-      const capId = btn.getAttribute('data-cap') || 'auto';
-      const capLabel = btn.textContent.trim();
-      setCapability(capId, capLabel);
-      closeAllPopovers();
+  // Dictation for the chat box. The browser's own recogniser only — the console
+  // is a typing surface with a mic on it, not a recording studio, and the local
+  // path means no audio ever reaches the server. Browsers without it keep the
+  // option hidden rather than being offered something that will not work.
+  let chatRec = null;
+  function toggleChatDictation(){
+    const box = document.getElementById('q');
+    const label = document.getElementById('voiceTrackLabel');
+    if(chatRec){ try{ chatRec.stop(); }catch(_){} chatRec = null; return; }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if(!SR){
+      if(label) label.textContent = 'Speech not supported in this browser';
+      return;
+    }
+    const rec = new SR();
+    rec.lang = navigator.language || 'en-US';
+    rec.continuous = true; rec.interimResults = true;
+    const before = (box.value||'').trim();
+    let settled = '';
+    rec.onresult = e => {
+      let interim = '';
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        const t = e.results[i][0].transcript;
+        if(e.results[i].isFinal) settled += t; else interim += t;
+      }
+      box.value = [before,(settled+interim).trim()].filter(Boolean).join(' ');
     };
-  });
+    rec.onerror = () => { if(label) label.textContent = 'Could not hear you'; };
+    rec.onend = () => {
+      chatRec = null;
+      if(label) label.textContent = 'Speak instead of typing';
+      box.focus();
+    };
+    chatRec = rec;
+    try{ rec.start(); if(label) label.textContent = 'Listening — tap to stop'; }
+    catch(_){ chatRec = null; }
+  }
+
+  function wireCapButtons(){
+    document.querySelectorAll('.cap-opt-btn').forEach(btn => {
+      btn.onclick = () => {
+        const capId = btn.getAttribute('data-cap') || 'auto';
+        const capLabel = btn.textContent.trim().replace(/\s*·\s*grounded$/,'');
+        setCapability(capId, capLabel);
+        closeAllPopovers();
+      };
+    });
+  }
+  wireCapButtons();
+
+  // Build the consumer goals from the server's catalogue. A goal marked
+  // "grounded" answers from real retrieved material — the published escalation
+  // ladder, or Agent X's own closed-case history — rather than from the model's
+  // recollection, and says so when it has nothing.
+  (async () => {
+    const list = document.getElementById('bookCapList');
+    if(!list) return;
+    try{
+      const cat = await (await fetch('/api/modes')).json();
+      const group = (cat.groups||[]).find(g => g.id === 'consumer');
+      if(!group || !group.modes.length) return;
+      list.innerHTML = group.modes.map(m =>
+        `<button type="button" data-cap="${m.id}" title="${m.grounded
+            ? 'Answers from retrieved published guidance, or from closed cases on record'
+            : 'Shapes how your records are written up'}"
+          class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">
+          ${m.label}${m.grounded ? ' <span class="text-[10px] text-emerald-600 dark:text-emerald-400">· grounded</span>' : ''}
+        </button>`).join('');
+
+      // The input track. Not a goal — it changes how you ask, not how Agent X
+      // answers — so it toggles dictation rather than setting a capability.
+      const input = (cat.groups||[]).find(g => g.id === 'input');
+      const voice = input && input.modes && input.modes[0];
+      if(voice && voice.available){
+        list.insertAdjacentHTML('beforeend',
+          `<div class="mt-2 mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Input</div>
+           <button type="button" id="voiceTrackBtn" title="${voice.detail||''}"
+             class="w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">
+             <span id="voiceTrackLabel">${voice.label}</span>
+             <span class="block text-[10px] text-zinc-400">audio never stored</span>
+           </button>`);
+        const vb = document.getElementById('voiceTrackBtn');
+        if(vb) vb.onclick = () => { closeAllPopovers(); toggleChatDictation(); };
+      }
+      wireCapButtons();
+    }catch(_){ /* picker keeps working with the general goals */ }
+  })();
 
   // Config Popover Label Update
   function updateConfigLabel(){
@@ -935,7 +1135,7 @@
      t.msgs.push({role:'assistant',content:answer,sources:sources});saveThreads();
    }catch(e){
      const slow=e&&e.name==='AbortError';
-     c.innerHTML='<span class="text-red-500">'+(slow?'That took too long — the model may be busy or rate-limited.':'Could not reach the model right now.')+'</span> <button class="ml-1.5 rounded-md border border-zinc-300 px-2 py-0.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900">Retry</button>';
+     c.innerHTML='<span class="text-red-500">'+(slow?'That took too long — the model may be busy or rate-limited.':'Could not reach the model right now.')+'</span> <button type="button" class="ml-1.5 rounded-md border border-zinc-300 px-2 py-0.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900">Retry</button>';
      const rb=c.querySelector('button');if(rb)rb.onclick=()=>answerInto(q,hist,c,t);
    }finally{clearTimeout(to);$('bAsk').disabled=false;$('log').scrollTop=$('log').scrollHeight;}
  }
@@ -949,7 +1149,7 @@
  // chat threads (history) — client-side, persisted in localStorage
  const EMPTY_HTML='<div class="js-empty my-auto py-10 text-center"><h2 class="serif mx-auto max-w-lg text-3xl leading-tight tracking-tight text-zinc-900 dark:text-zinc-100">Ask anything about your subjects.</h2><p class="mx-auto mt-3 mb-6 max-w-sm text-sm text-zinc-500 dark:text-zinc-400">Plain English — what you know, who relates to whom, what depends on what.</p><div class="mx-auto flex max-w-md flex-wrap justify-center gap-2">'+
    ['What do you know about payments-service?|what is payments-service?','Who is connected to redis-cache?|connections of redis-cache','What depends on the auth-service?|blast radius of auth-service','Summarise everything on record for api-gateway.|summarise api-gateway']
-   .map(s=>{const i=s.indexOf('|');return '<button data-q="'+s.slice(0,i)+'" class="'+chipCls+'">'+s.slice(i+1)+'</button>';}).join('')+'</div></div>';
+   .map(s=>{const i=s.indexOf('|');return '<button type="button" data-q="'+s.slice(0,i)+'" class="'+chipCls+'">'+s.slice(i+1)+'</button>';}).join('')+'</div></div>';
  function loadThreads(){try{threads=JSON.parse(localStorage.getItem('agentx.threads.'+activeWs)||'[]');}catch(e){threads=[];}active=localStorage.getItem('agentx.active.'+activeWs)||null;if(!threads.find(t=>t.id===active))active=null;}
  function saveThreads(){try{localStorage.setItem('agentx.threads.'+activeWs,JSON.stringify(threads.slice(0,50)));localStorage.setItem('agentx.active.'+activeWs,active||'');}catch(e){}}
  function curThread(){return threads.find(t=>t.id===active)||null;}
@@ -1037,14 +1237,14 @@
    try{const j=await(await fetch('/api/subjects?workspace='+encodeURIComponent(activeWs))).json();
      const subjects=Array.isArray(j)?j:[];
      ctxSysCount=subjects.length;renderCtx();
-     if(!subjects.length){g.innerHTML='<div class="col-span-full rounded-xl border border-dashed border-zinc-300 bg-white/50 p-8 text-center dark:border-zinc-700 dark:bg-[#1a1a1f]/50"><p class="text-sm text-zinc-500 dark:text-zinc-400">No subjects in this workspace yet.</p><button id="emptyAdd" class="mt-3 rounded-full bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-500">Add a record</button></div>';const ea=$('emptyAdd');if(ea)ea.onclick=()=>{const b=$('addSysBtn');if(b)b.click();};return;}
+     if(!subjects.length){g.innerHTML='<div class="col-span-full rounded-xl border border-dashed border-zinc-300 bg-white/50 p-8 text-center dark:border-zinc-700 dark:bg-[#1a1a1f]/50"><p class="text-sm text-zinc-500 dark:text-zinc-400">No subjects in this workspace yet.</p><button type="button" id="emptyAdd" class="mt-3 rounded-full bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-500">Add a record</button></div>';const ea=$('emptyAdd');if(ea)ea.onclick=()=>{const b=$('addSysBtn');if(b)b.click();};return;}
      g.innerHTML='';g.classList.add('card-enter');
      subjects.forEach((name,idx)=>{
        const card=document.createElement('div');
        card.className='glow lift flex items-center justify-between gap-3 rounded-xl border border-zinc-300 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-[#1a1a1f]';
        card.setAttribute('data-glow','');card.style.setProperty('--i',idx);
        card.innerHTML='<div class="min-w-0"><div class="mono text-sm font-medium truncate">'+esc(name)+'</div><div class="mt-0.5 text-xs text-zinc-400">subject in memory</div></div>'+
-         '<button class="decom shrink-0 rounded-full border border-red-300 bg-red-50/50 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:-translate-y-px hover:border-red-400 hover:bg-red-50 dark:border-red-800/70 dark:bg-red-950/20 dark:text-red-400 dark:hover:bg-red-950/40">Forget &amp; Prove</button>';
+         '<button type="button" class="decom shrink-0 rounded-full border border-red-300 bg-red-50/50 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:-translate-y-px hover:border-red-400 hover:bg-red-50 dark:border-red-800/70 dark:bg-red-950/20 dark:text-red-400 dark:hover:bg-red-950/40">Forget &amp; Prove</button>';
        card.querySelector('.decom').onclick=()=>forgetFlow(name,card);
        g.appendChild(card);
      });
@@ -1102,8 +1302,8 @@
      a.forEach((x,idx)=>{const ad=x.age_days!=null?x.age_days:0;const ago=ad>=365?(ad/365).toFixed(1)+' years':Math.round(ad/30)+' months';
        h+='<div style="--i:'+idx+'" class="rounded-xl border border-amber-200 bg-amber-50/40 p-4 dark:border-amber-900/40 dark:bg-amber-950/15"><div class="flex items-start justify-between gap-3"><div class="min-w-0"><div class="flex flex-wrap items-center gap-1.5 text-sm"><span class="mono font-medium text-zinc-900 dark:text-zinc-100">'+esc(x.subject)+'</span>'+(x.title?'<span class="text-zinc-400 truncate">'+esc(x.title)+'</span>':'')+'</div><p class="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">'+ad+' days since review (~'+ago+') — verify it is still accurate.</p></div>'+
          '<div class="flex shrink-0 items-center gap-2">'+
-         '<button data-demote="'+esc(x.subject)+'" class="rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 transition hover:bg-amber-100 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-900/40">Demote</button>'+
-         '<button data-restore="'+esc(x.subject)+'" class="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-900/40">Restore</button>'+
+         '<button type="button" data-demote="'+esc(x.subject)+'" class="rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 transition hover:bg-amber-100 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-900/40">Demote</button>'+
+         '<button type="button" data-restore="'+esc(x.subject)+'" class="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-900/40">Restore</button>'+
          '</div></div></div>';});
      h+='</div>';b.innerHTML=h;
      b.querySelectorAll('button[data-demote]').forEach(btn=>btn.onclick=()=>curationAction('demote',btn,btn.getAttribute('data-demote')));
@@ -1165,8 +1365,8 @@
    $('fgBody').innerHTML=
      '<div class="flex items-center gap-2.5"><span class="grid h-9 w-9 place-items-center rounded-full border border-red-300 bg-red-50 text-red-600 dark:border-red-800/70 dark:bg-red-950/30 dark:text-red-400"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span><h3 class="text-base font-semibold tracking-tight">Forget &amp; Prove '+esc(sys)+'?</h3></div>'+
      '<p class="mt-3 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">This is a <b class="font-medium text-zinc-700 dark:text-zinc-200">verifiable hard-delete</b> — every document, graph node and edge exclusive to <span class="mono">'+esc(sys)+'</span> is removed in one atomic transaction, and its encryption key crypto-shredded. Agent X then proves, in three parts, that it existed, that it is gone, and that it is irreversible.</p>'+
-     '<div class="mt-5 flex justify-end gap-2"><button id="fgCancel" class="rounded-lg px-3.5 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900">Cancel</button>'+
-     '<button id="fgGo" class="rounded-full bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700">Forget &amp; Prove</button></div>';
+     '<div class="mt-5 flex justify-end gap-2"><button type="button" id="fgCancel" class="rounded-lg px-3.5 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900">Cancel</button>'+
+     '<button type="button" id="fgGo" class="rounded-full bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700">Forget &amp; Prove</button></div>';
    $('fgCancel').onclick=fgClose;$('fgGo').onclick=fgRun;fgOpen();
  }
  async function fgRun(){
@@ -1179,7 +1379,7 @@
      clearTimeout(to);if(!res.ok)throw new Error('bad status');const j=await res.json();fgDidForget=true;invalidateGraphCache(activeWs);
      if(fgCard){fgCard.classList.add('dissolving');const c=fgCard;setTimeout(()=>{c&&c.remove();},760);}  // only dissolve AFTER the delete actually succeeds
      fgReceipt(j);
-   }catch(e){clearTimeout(to);const msg=e&&e.name==='AbortError'?'This is taking too long — the erasure may still be finishing. Refresh Subjects in a moment to check.':'Could not complete the erasure.';$('fgBody').innerHTML='<div class="py-7 text-center"><p class="text-sm text-red-500">'+esc(msg)+'</p><button id="fgX" class="mt-4 rounded-lg border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-800">Close</button></div>';$('fgX').onclick=fgClose;}
+   }catch(e){clearTimeout(to);const msg=e&&e.name==='AbortError'?'This is taking too long — the erasure may still be finishing. Refresh Subjects in a moment to check.':'Could not complete the erasure.';$('fgBody').innerHTML='<div class="py-7 text-center"><p class="text-sm text-red-500">'+esc(msg)+'</p><button type="button" id="fgX" class="mt-4 rounded-lg border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-800">Close</button></div>';$('fgX').onclick=fgClose;}
  }
  function fgStat(n,label){return '<div class="flex-1 rounded-xl border border-zinc-300 bg-zinc-50/60 px-2 py-3 text-center dark:border-zinc-800 dark:bg-zinc-900/40"><div class="mono text-2xl font-medium tracking-tight">'+(n==null?'—':n)+'</div><div class="mt-0.5 text-[10px] uppercase tracking-wide text-zinc-400">'+label+'</div></div>';}
  // The 3-part proof reveal — data = {receipt, proof_prior_existence, proof_of_absence, certificate}.
@@ -1208,7 +1408,7 @@
      (cert.stored?'<div class="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400">Stored in object-locked (WORM) S3</div>':'')+
      (cert.signature?'<div class="mt-1 text-[11px] text-zinc-400">ECDSA-signed</div>':'');
    const section=(n,title,inner)=>'<div class="mt-5"><div class="flex items-center gap-2"><span class="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-violet-500/15 mono text-[11px] font-medium text-violet-700 dark:text-violet-300">'+n+'</span><h4 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">'+title+'</h4></div>'+inner+'</div>';
-   const certBtn=eid?'<button id="fgCert" class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>View certificate</button>':'';
+   const certBtn=eid?'<button type="button" id="fgCert" class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>View certificate</button>':'';
    $('fgBody').innerHTML=
      '<div class="text-center"><div class="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full border border-violet-500/30 bg-violet-500/5 text-violet-500"><svg width="24" height="21" viewBox="0 0 28 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M16.97 7.97A7.2 7.2 0 1 0 16.97 16.03"/><circle cx="19.6" cy="12" r="1.25" fill="currentColor" stroke="none"/><circle cx="22.6" cy="12" r="0.95" fill="currentColor" stroke="none" opacity=".6"/><circle cx="25.2" cy="12" r="0.62" fill="currentColor" stroke="none" opacity=".32"/></svg></div>'+
      '<h3 class="serif text-3xl tracking-tight">Forgotten.</h3>'+
@@ -1219,7 +1419,7 @@
      section('3','Irreversible','<div class="mt-2 space-y-2">'+shredBadge+certRow+'</div>')+
      '<div class="mt-6 flex items-center justify-between gap-2"><span class="inline-flex items-center gap-1.5 text-[11px] font-medium text-violet-600 dark:text-violet-400"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Verifiable erasure</span>'+
      '<div class="flex items-center gap-2">'+certBtn+
-     '<button id="fgDone" class="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900">Done</button></div></div>';
+     '<button type="button" id="fgDone" class="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900">Done</button></div></div>';
    $('fgDone').onclick=fgClose;
    const cb=$('fgCert');if(cb)cb.onclick=()=>window.open('/certificate/'+encodeURIComponent(eid),'_blank');
    // fire the live re-ask; render whatever the model now says (it should have no record of the subject)
@@ -1337,14 +1537,14 @@
      else if(e.target===id){const o=gdata.byId[e.source];if(!o)return;rels.push({dir:'←',rel:e.label,node:o.label});}
    });
    const isEnt=n.type==='Entity';
-   let h='<div class="flex items-start justify-between gap-2"><div class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">'+esc(n.label)+'</div><button id="gpclose" aria-label="Close" class="-mr-1 -mt-1 shrink-0 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-200"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>';
+   let h='<div class="flex items-start justify-between gap-2"><div class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">'+esc(n.label)+'</div><button type="button" id="gpclose" aria-label="Close" class="-mr-1 -mt-1 shrink-0 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-200"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>';
    if(isEnt&&types.length)h+='<div class="mt-1.5 flex flex-wrap gap-1">'+types.map(t=>'<span class="rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">'+esc(t)+'</span>').join('')+'</div>';
    else h+='<div class="mt-1 text-[11px] uppercase tracking-wide text-zinc-400">'+(isEnt?'entity':'type')+'</div>';
    if(rels.length)h+='<div class="mt-3 text-[11px] uppercase tracking-wide text-zinc-400">connections</div><div class="mt-1.5 space-y-1.5">'+rels.map(r=>'<div class="flex items-baseline gap-1.5 text-xs"><span class="text-violet-500">'+r.dir+'</span><span class="text-zinc-500 dark:text-zinc-400">'+esc(r.rel)+'</span><span class="font-medium text-zinc-800 dark:text-zinc-200">'+esc(r.node)+'</span></div>').join('')+'</div>';
    else h+='<div class="mt-3 text-xs text-zinc-400">No connections in the graph.</div>';
    if(rels.length||types.length){h+='<div class="mt-3 text-[11px] uppercase tracking-wide text-zinc-400">blast radius</div>';
-     h+='<div class="mt-1.5 flex gap-1">'+[1,2,3].map(d=>'<button data-d="'+d+'" class="gpradb flex-1 rounded-md border px-2 py-1 text-[11px] font-medium transition '+(d===gpdepth?'border-violet-500/60 bg-violet-500/10 text-violet-600 dark:text-violet-300':'border-zinc-200 text-zinc-500 hover:border-violet-500/50 dark:border-zinc-700 dark:text-zinc-400')+'">'+d+(d>1?' hops':' hop')+'</button>').join('')+'</div>';}
-   h+='<button id="gpask" class="mt-3 w-full rounded-lg border border-violet-500/40 px-3 py-1.5 text-xs font-medium text-violet-600 transition hover:bg-violet-500/10 dark:text-violet-400">Ask about this →</button>';
+     h+='<div class="mt-1.5 flex gap-1">'+[1,2,3].map(d=>'<button type="button" data-d="'+d+'" class="gpradb flex-1 rounded-md border px-2 py-1 text-[11px] font-medium transition '+(d===gpdepth?'border-violet-500/60 bg-violet-500/10 text-violet-600 dark:text-violet-300':'border-zinc-200 text-zinc-500 hover:border-violet-500/50 dark:border-zinc-700 dark:text-zinc-400')+'">'+d+(d>1?' hops':' hop')+'</button>').join('')+'</div>';}
+   h+='<button type="button" id="gpask" class="mt-3 w-full rounded-lg border border-violet-500/40 px-3 py-1.5 text-xs font-medium text-violet-600 transition hover:bg-violet-500/10 dark:text-violet-400">Ask about this →</button>';
    el.innerHTML=h;el.classList.remove('hidden');el.classList.remove('mscale');void el.offsetWidth;el.classList.add('mscale');
    $('gpclose').onclick=()=>{gPanelHide();gpinned=null;gpdepth=1;gReset();gMeta(null);};
    $('gpask').onclick=()=>askAbout(n.label);
@@ -1429,13 +1629,13 @@
       let pillsHtml='';
       if(['pdf','jpg','png','txt','html','eml','csv'].includes(ext)||/receipt|booking|invoice|flight|hotel|pnr|order/i.test(f.name)){
         pillsHtml='<div class="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs"><span class="font-medium text-zinc-500 dark:text-zinc-400">Suggested actions:</span>'+
-          '<button onclick="switchCategoryMode(\'booking\');show(\'triage\');" class="rounded border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 font-medium text-violet-700 transition hover:bg-violet-500/20 dark:text-violet-300">Audit Receipt &amp; Surcharges</button>'+
-          '<button onclick="switchCategoryMode(\'booking\');show(\'triage\');" class="rounded border border-amber-500/30 bg-amber-50/50 px-2 py-0.5 font-medium text-amber-700 transition hover:bg-amber-100 dark:text-amber-300">Generate Dispute Letter</button>'+
+          '<button type="button" onclick="switchCategoryMode(\'booking\');show(\'triage\');" class="rounded border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 font-medium text-violet-700 transition hover:bg-violet-500/20 dark:text-violet-300">Audit Receipt &amp; Surcharges</button>'+
+          '<button type="button" onclick="switchCategoryMode(\'booking\');show(\'triage\');" class="rounded border border-amber-500/30 bg-amber-50/50 px-2 py-0.5 font-medium text-amber-700 transition hover:bg-amber-100 dark:text-amber-300">Generate Dispute Letter</button>'+
           '</div>';
       }else if(['py','js','ts','json','cpp','java','html','css'].includes(ext)){
         pillsHtml='<div class="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs"><span class="font-medium text-zinc-500 dark:text-zinc-400">Suggested actions:</span>'+
-          '<button onclick="switchCategoryMode(\'general\');show(\'triage\');" class="rounded border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 font-medium text-violet-700 transition hover:bg-violet-500/20 dark:text-violet-300">Audit Code Bugs</button>'+
-          '<button onclick="switchCategoryMode(\'general\');show(\'triage\');" class="rounded border border-emerald-500/30 bg-emerald-50/50 px-2 py-0.5 font-medium text-emerald-700 transition hover:bg-emerald-100 dark:text-emerald-300">Extract Specifications</button>'+
+          '<button type="button" onclick="switchCategoryMode(\'general\');show(\'triage\');" class="rounded border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 font-medium text-violet-700 transition hover:bg-violet-500/20 dark:text-violet-300">Audit Code Bugs</button>'+
+          '<button type="button" onclick="switchCategoryMode(\'general\');show(\'triage\');" class="rounded border border-emerald-500/30 bg-emerald-50/50 px-2 py-0.5 font-medium text-emerald-700 transition hover:bg-emerald-100 dark:text-emerald-300">Extract Specifications</button>'+
           '</div>';
       }
 

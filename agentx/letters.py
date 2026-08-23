@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import re
 
-from agentx import eligibility, normalize
+from agentx import eligibility, knowledge, normalize
 from agentx import case as case_mod
 from agentx.evidence import graph as egraph
 from agentx.ontology import REMEDY_KINDS, get as get_definition
@@ -72,7 +72,8 @@ def compose(conn, case: dict, params: dict) -> tuple[str, str]:
                           refs, amount)
 
     polished = _polish(body, case, remedy, counterparty)
-    if polished and _grounded(polished, conn, case["id"], refs, amount):
+    if (polished and _grounded(polished, conn, case["id"], refs, amount)
+            and _rules_grounded(polished, conn, case["id"])):
         return polished, subject
     return body, subject
 
@@ -247,14 +248,103 @@ def _grounded(text: str, conn, case_id: str, refs: list[dict],
     return True
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# rule grounding — a letter may only cite law the case actually established
+# ─────────────────────────────────────────────────────────────────────────────
+# `_grounded` above checks amounts, dates and references. It does not look at
+# legal claims, and that was a real hole: a rewrite that keeps every figure
+# honest and adds "under Section 75 of the Consumer Credit Act 1974 you must
+# refund within 14 working days" passed, and went out. Nothing in the case
+# established either statute. A disputes team's first move is to check the rule
+# you cited, and citing one that does not apply loses an otherwise winnable case
+# — which makes a fabricated citation more damaging than a fabricated figure,
+# not less.
+#
+# Anything shaped like a rule is caught deliberately broadly. A false positive
+# costs a rewrite; a false negative sends an invented statute to a counterparty.
+_RULE_PATTERNS = (
+    # "Section 75", "Article 7(1)", "Regulation 14", "Rule 12", "clause 4.2"
+    re.compile(r"\b(?:section|article|regulation|reg\.|rule|clause|paragraph|para\.?)"
+               r"\s*\d+[\w.()\-]*", re.I),
+    # "Consumer Credit Act 1974", "Payment Services Regulations 2017"
+    re.compile(r"\b(?:[A-Z][\w’'()-]*\s+){1,6}"
+               r"(?:Act|Regulations|Directive|Convention|Rules|Scheme|Code)"
+               r"(?:,?\s+\d{4})?"),
+    # "15 U.S.C. § 1666", "EU261", "Regulation (EC) No 261/2004"
+    re.compile(r"\b\d+\s*U\.?S\.?C\.?\s*(?:§\s*)?\d+", re.I),
+    re.compile(r"\bEU\s?\d{3,}\b", re.I),
+    re.compile(r"\bNo\.?\s?\d{3}/\d{4}\b"),
+)
+
+
+def _rule_mentions(text: str) -> list[str]:
+    """Every legal-rule-shaped phrase in a letter, de-duplicated in order."""
+    found: list[str] = []
+    for pattern in _RULE_PATTERNS:
+        for match in pattern.findall(text):
+            phrase = " ".join(str(match).split()).strip(" .,;:")
+            if phrase and phrase.lower() not in {f.lower() for f in found}:
+                found.append(phrase)
+    return found
+
+
+def _established_rules(conn, case_id: str) -> str:
+    """The text of every rule this case actually established, as one corpus.
+
+    Drawn from the applicable policy findings — the deterministic corpus, which
+    is the only thing entitled to establish an entitlement — plus any research
+    citation that verified against its source. Research that came back partial,
+    unsupported or conflicting contributes nothing here, which is the point.
+    """
+    parts: list[str] = []
+    for p in eligibility.load_policies(conn, case_id):
+        if p["applies"] != "yes":
+            continue
+        parts += [p.get("citation") or "", p.get("title") or "",
+                  p.get("authority") or ""]
+    try:
+        from agentx import research
+        for row in research.load(conn, case_id)["citations"]:
+            if row.get("verdict") == "verified" and row.get("claim"):
+                parts.append(row["claim"])
+    except Exception:
+        # Research is an enhancement; a case whose research table is unavailable
+        # still gets the policy-corpus check, which is the load-bearing half.
+        pass
+    return "\n".join(p for p in parts if p)
+
+
+def _rules_grounded(text: str, conn, case_id: str) -> bool:
+    """Does every rule this letter cites trace to one the case established?"""
+    mentions = _rule_mentions(text)
+    if not mentions:
+        return True
+    established = _established_rules(conn, case_id)
+    if not established.strip():
+        # The letter cites law and the case established none. There is no
+        # charitable reading of that.
+        return False
+    source = [{"id": f"case:{case_id}", "text": established}]
+    return all(knowledge.verify_citation(m, source).safe_to_state
+               for m in mentions)
+
+
 def grounding_report(text: str, conn, case_id: str) -> dict:
     """Why a letter passed or failed grounding — for tests and for the UI."""
     refs = _references(conn, case_id)
     ok = _grounded(text, conn, case_id, refs, "")
-    return {"grounded": ok,
+    mentions = _rule_mentions(text)
+    established = _established_rules(conn, case_id)
+    source = [{"id": f"case:{case_id}", "text": established}] if established.strip() else []
+    checks = [knowledge.verify_citation(m, source) for m in mentions]
+    return {"grounded": ok and all(c.safe_to_state for c in checks),
+            "figures_grounded": ok,
+            "rules_grounded": all(c.safe_to_state for c in checks),
             "money_tokens": _MONEY.findall(text),
             "date_tokens": _DATE.findall(text),
             "reference_tokens": [r for r in _REF.findall(text)
                                  if any(ch.isdigit() for ch in r)],
+            "rule_citations": [c.as_dict() for c in checks],
             "rule": "every amount, date and reference in an outbound letter must "
-                    "appear in the case's fact graph"}
+                    "appear in the case's fact graph, and every rule it cites "
+                    "must be one the case established"}

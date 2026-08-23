@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 
+from core import modes
 from db import store
 from llm import client
 
@@ -132,33 +133,44 @@ def ask(
             convo = "\n".join("User: " + str(t.get("content", ""))[:400] for t in turns)
             q = f"Earlier in this conversation the user asked:\n{convo}\n\nThe user now asks: {query}"
 
+    # The selected goal, resolved from the one declared catalogue. An unknown id
+    # is simply no mode — the picker cannot offer one that is not routed, which
+    # is the whole reason the catalogue exists (see core/modes.py).
+    mode = modes.get(capability)
+
     # Determine retrieval depth based on capability or assist style
-    k_val = 10 if (capability == "research" or assist_style == "deeply") else 6
-    hops_val = 2 if (capability == "research" or assist_style == "deeply") else 1
+    deep = (mode.deep_retrieval if mode else False) or assist_style == "deeply"
+    k_val = 10 if deep else 6
+    hops_val = 2 if deep else 1
 
     with store.connect() as conn:
         nodes, edges = _retrieve(conn, q, workspace, k=k_val, hops=hops_val)
 
-    if not nodes:
+    # Grounded modes attach real retrieved material — a published escalation
+    # ladder, or Agent X's own closed-case history. Resolved BEFORE the
+    # empty-memory check, because these two do not answer from the user's own
+    # records at all: "who do I complain to about a bank" has a published answer
+    # whether or not this workspace has ever stored anything. When the provider
+    # has nothing it returns None, and the mode's prompt already instructs the
+    # model to say so rather than fill the gap.
+    grounded = None
+    if mode and mode.context:
+        try:
+            grounded = mode.context(query, workspace)
+        except Exception:
+            grounded = None
+
+    if not nodes and not grounded:
         return "I don't have anything on record about that.", []
 
-    # Dynamic capability & style prompt orchestration
+    # Goal, style and format shaping. The goal comes from the catalogue rather
+    # than an if/elif chain, so every option the picker shows is routed.
     prompt = ANSWER_PROMPT
     temp = 0.0
 
-    if capability == "create":
-        temp = 0.7
-        prompt += " Focus on creative drafting, generating fresh ideas, and engaging prose."
-    elif capability == "analyze":
-        prompt += " Focus on structured analysis, key metric extraction, and identifying patterns."
-    elif capability == "build":
-        prompt += " Focus on technical accuracy, actionable code/system steps, and implementation clarity."
-    elif capability == "decide":
-        prompt += " Focus on evaluating trade-offs, comparing options objectively, and structured decision making."
-    elif capability == "learn":
-        prompt += " Focus on step-by-step explanations, clear analogies, and educational clarity."
-    elif capability == "research":
-        prompt += " Focus on thorough investigation, citing distinct evidence, and comprehensive context synthesis."
+    if mode:
+        prompt += mode.prompt
+        temp = mode.temperature
 
     if assist_style == "step-by-step":
         prompt += " Break down your response into logical, numbered step-by-step guidance."
@@ -176,7 +188,11 @@ def ask(
     elif output_format == "report":
         prompt += " Format the response as a detailed, well-structured report with clear headings."
 
-    user = f"Context (the user's records):\n{_serialize(nodes, edges)}\n\nUser question: {query}"
+    user = (f"Context (the user's records):\n{_serialize(nodes, edges)}" if nodes
+            else "The user has no stored records relevant to this question.")
+    if grounded:
+        user += f"\n\n{grounded}"
+    user += f"\n\nUser question: {query}"
     answer = client.chat(prompt, user, temperature=temp, max_tokens=700).strip()
     sources = list(dict.fromkeys(n[1] for n in nodes if n[1]))[:6]
     return answer, sources

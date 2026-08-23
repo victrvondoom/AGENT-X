@@ -76,9 +76,9 @@ button.warn{color:var(--broken);border-color:var(--broken)}
   <div class="sub">Both pipelines write one hash chain. Break a link and watch what
     happens to everything after it.</div>
   <div class="row">
-    <button id="btnTamper" onclick="tamperOne()" class="warn">Tamper a block</button>
-    <button id="btnShred" onclick="shredOne()">Crypto-shred</button>
-    <button id="btnReset" onclick="rebuild()">Reset</button>
+    <button type="button" id="btnTamper" onclick="tamperOne()" class="warn">Tamper a block</button>
+    <button type="button" id="btnShred" onclick="shredOne()">Crypto-shred</button>
+    <button type="button" id="btnReset" onclick="rebuild()">Reset</button>
   </div>
 </div>
 
@@ -94,7 +94,7 @@ button.warn{color:var(--broken);border-color:var(--broken)}
   <div id="lines"></div>
 </div>
 
-<button id="theme" class="panel" onclick="toggleTheme()"><span id="ti">☾</span></button>
+<button type="button" id="theme" class="panel" onclick="toggleTheme()"><span id="ti">☾</span></button>
 <a class="link" href="/trustdoc">← back to the app</a>
 
 <script type="importmap">

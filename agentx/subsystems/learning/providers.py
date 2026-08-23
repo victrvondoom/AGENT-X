@@ -1,0 +1,1401 @@
+"""Classroom Memory providers.
+
+ClassroomProvider is the interface; DemoProvider is the deterministic zero-dependency
+implementation, which returns byte-identical response shapes to CloudProvider.
+CloudProvider (real Cognee Cloud via cognee.serve) takes over once cloud credentials
+are verified: it must return the exact same response shapes.
+
+Mastery model:
+  weight < 0.35        -> "red"    (gap)
+  0.35 <= weight <= .75-> "amber"  (learning)
+  weight > 0.75        -> "green"  (mastered)
+Decay is VIEW-LAYER only (offset_days): mastery is never mutated by the clock, it is
+rendered as "rusty" based on time since the last successful attempt.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import time
+import uuid
+from pathlib import Path
+
+from agentx.subsystems.learning.ledger import SQLiteLedger
+
+STUDENT_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{1,15}$")
+CURRICULUM_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{1,40}$")
+
+# Boundary change: the original kept its curriculum one level above the
+# backend package. Vendored, the data travels with the code.
+CURRICULUM_PATH = Path(__file__).resolve().parent / "curriculum" / "python.json"
+CURRICULUM_DIR = CURRICULUM_PATH.parent
+IMPORTED_CURRICULUM_DIR = CURRICULUM_DIR / "imported"
+
+RED_MAX = 0.35
+GREEN_MIN = 0.75
+LEARN_ALPHA = 0.35          # correct answer: w += alpha * (1 - w)  (3 corrects: .2 -> .78)
+WRONG_FACTOR = 0.15         # wrong answer:   w -= factor * w
+RUSTY_AFTER_DAYS = 14       # untouched this long -> "rusty" flag in the view layer
+DAY_MS = 86_400_000
+
+
+def now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def band(weight: float) -> str:
+    if weight < RED_MAX:
+        return "red"
+    if weight > GREEN_MIN:
+        return "green"
+    return "amber"
+
+
+def load_curriculum() -> dict:
+    with open(CURRICULUM_PATH, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def validate_curriculum(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("curriculum must be a JSON object")
+    domain = str(payload.get("domain", "")).strip().lower()
+    title = str(payload.get("title", "")).strip()
+    concepts = payload.get("concepts")
+    if not CURRICULUM_ID_RE.match(domain):
+        raise ValueError("domain must be lowercase letters, digits, - or _")
+    if not title:
+        raise ValueError("title is required")
+    if not isinstance(concepts, list) or not concepts:
+        raise ValueError("concepts must be a non-empty list")
+
+    ids: set[str] = set()
+    for c in concepts:
+        cid = str(c.get("id", "")).strip().lower()
+        if not CURRICULUM_ID_RE.match(cid):
+            raise ValueError(f"invalid concept id: {cid!r}")
+        if cid in ids:
+            raise ValueError(f"duplicate concept id: {cid}")
+        ids.add(cid)
+        if not str(c.get("name", "")).strip():
+            raise ValueError(f"{cid}: name is required")
+        if not str(c.get("summary", "")).strip():
+            raise ValueError(f"{cid}: summary is required")
+        if not isinstance(c.get("requires", []), list):
+            raise ValueError(f"{cid}: requires must be a list")
+        questions = c.get("questions")
+        if not isinstance(questions, list) or not questions:
+            raise ValueError(f"{cid}: at least one question is required")
+        for q in questions:
+            options = q.get("options")
+            answer = q.get("answer")
+            if not str(q.get("q", "")).strip():
+                raise ValueError(f"{cid}: question text is required")
+            if not isinstance(options, list) or len(options) < 2:
+                raise ValueError(f"{cid}: question needs at least two options")
+            if not isinstance(answer, int) or answer < 0 or answer >= len(options):
+                raise ValueError(f"{cid}: answer index is out of range")
+
+    for c in concepts:
+        cid = c["id"]
+        for req in c.get("requires", []):
+            if req not in ids:
+                raise ValueError(f"{cid}: unknown prerequisite {req}")
+
+    clean = {
+        "domain": domain,
+        "title": title,
+        "concepts": [],
+    }
+    for c in concepts:
+        clean["concepts"].append({
+            "id": str(c["id"]).strip().lower(),
+            "name": str(c["name"]).strip(),
+            "summary": str(c["summary"]).strip(),
+            "requires": [str(r).strip().lower() for r in c.get("requires", [])],
+            "questions": [
+                {
+                    "q": str(q["q"]).strip(),
+                    "options": [str(o) for o in q["options"]],
+                    "answer": int(q["answer"]),
+                }
+                for q in c["questions"]
+            ],
+        })
+    return clean
+
+
+class ClassroomProvider:
+    """Interface: every method returns plain JSON-serializable dicts."""
+
+    def health(self) -> dict: ...
+    def students(self) -> dict: ...
+    def student_graph(self, student: str, offset_days: int = 0) -> dict: ...
+    def student_timeline(self, student: str, offset_days: int = 0) -> dict: ...
+    def student_report(self, student: str) -> dict: ...
+    def quiz_next(self, student: str) -> dict: ...
+    def quiz_answer(self, student: str, concept: str, answer_index: int) -> dict: ...
+    def class_heatmap(self, offset_days: int = 0) -> dict: ...
+    def teaching_plan(self, offset_days: int = 0, top_k: int = 4) -> dict: ...
+    def retire(self, student: str, concept: str) -> dict: ...
+    def reset_student(self, student: str) -> dict: ...
+    def ask(self, student: str, question: str) -> dict: ...
+    def class_ask(self, question: str) -> dict: ...
+    def add_student(self, student: str) -> dict: ...
+    def setup_class(self, students: list[str]) -> dict: ...
+    def curricula(self) -> dict: ...
+    def import_curriculum(self, payload: dict) -> dict: ...
+    def assign_review(self, concept: str) -> dict: ...
+    def close(self) -> None: ...
+
+
+class DemoProvider(ClassroomProvider):
+    """Deterministic in-memory implementation. No network, no LLM, no Cognee.
+
+    Seeds three students: alice fresh, bob mid-progress,
+    cara advanced-but-rusty: so the teacher heat map is interesting immediately.
+    """
+
+    def __init__(self):
+        self.curriculum = load_curriculum()
+        self.concepts = {c["id"]: c for c in self.curriculum["concepts"]}
+        self._states: dict[str, dict] = {}
+        self._question_cursor: dict[tuple[str, str], int] = {}
+        self._sessions: dict[str, dict] = {}
+        self._assignments: list[dict] = []
+        self._seed_all()
+
+    # ---------- seeding ----------
+
+    def _fresh_state(self) -> dict:
+        t = now_ms()
+        return {
+            cid: {"weight": 0.2, "updated_at": t, "retired": False}
+            for cid in self.concepts
+        }
+
+    def _seed_all(self):
+        t = now_ms()
+        self._states["alice"] = self._fresh_state()
+
+        bob = self._fresh_state()
+        # a believable mid-course gradient: solid basics, fading middle, red frontier
+        for cid, w in [
+            ("variables", 0.92), ("data-types", 0.88), ("strings", 0.84),
+            ("lists", 0.86), ("conditionals", 0.8),
+            ("dicts", 0.62), ("loops", 0.58), ("functions", 0.66),
+            ("scope", 0.48), ("comprehensions", 0.44), ("exceptions", 0.4),
+        ]:
+            if cid in bob:
+                bob[cid].update(weight=w)
+        self._states["bob"] = bob
+
+        cara = self._fresh_state()
+        old = t - 40 * DAY_MS  # long-untouched -> rusty in the view layer
+        for cid in self.concepts:
+            cara[cid].update(weight=0.85, updated_at=old)
+        for cid in ["async-await", "asyncio-tasks", "recursion"]:
+            if cid in cara:
+                cara[cid].update(weight=0.3, updated_at=t)
+        self._states["cara"] = cara
+
+        # a class-sized roster: curriculum order is progressive, so a "progress
+        # point" per student produces believable individual gradients and a
+        # heat map that reads like a real classroom
+        order = list(self.concepts)
+        n = max(1, len(order) - 1)
+        classroom = {
+            "aarav": 0.85, "priya": 0.6, "ishaan": 0.55, "meera": 0.35,
+            "rohan": 0.3, "ananya": 0.7, "dev": 0.2,
+        }
+        for i, (sid, progress) in enumerate(classroom.items()):
+            st = self._fresh_state()
+            for j, cid in enumerate(order):
+                pos = j / n
+                if pos < progress * 0.65:
+                    w = 0.86 - (i % 3) * 0.03
+                elif pos < progress:
+                    w = 0.5 - (j % 3) * 0.04
+                else:
+                    w = 0.2 - (j % 2) * 0.05
+                st[cid]["weight"] = round(min(0.95, max(0.1, w)), 2)
+            # recursion is the classic class-wide struggle: keep it a real gap
+            # regardless of overall progress (also anchors the demo narrative)
+            if "recursion" in st:
+                st["recursion"]["weight"] = round(0.18 + (i % 3) * 0.05, 2)
+            self._states[sid] = st
+
+        # give every seeded student a believable LEARNING HISTORY: spread each
+        # concept's last-practiced time across the term by curriculum position, so
+        # the timeline reads like a real journey (early concepts learned long ago;
+        # long-untouched mastered concepts show up as "now rusty" = forgetting).
+        for sid in self._states:
+            self._spread_timeline(self._states[sid])
+
+    def _spread_timeline(self, state: dict, term_days: int = 70):
+        order = list(self.concepts)
+        span = max(1, len(order) - 1)
+        now = now_ms()
+        for i, cid in enumerate(order):
+            rec = state[cid]
+            b = band(rec["weight"])
+            if b == "green":
+                # mastered: earlier curriculum concepts were mastered longer ago
+                days_ago = round(term_days * (1 - i / span) * 0.85) + 4
+            elif b == "amber":
+                days_ago = 3 + (i % 4)          # currently being worked on
+            else:
+                continue                        # red / not started: leave as fresh
+            rec["updated_at"] = now - days_ago * DAY_MS
+
+    # ---------- core reads ----------
+
+    def health(self) -> dict:
+        return {
+            "mode": "demo",
+            "cloud_connected": False,
+            "domain": self.curriculum["domain"],
+            "title": self.curriculum["title"].replace("→", "->"),
+            "concepts": len(self.concepts),
+            "students": sorted(self._states),
+            "ledger": "memory",
+        }
+
+    def students(self) -> dict:
+        out = []
+        for sid, state in sorted(self._states.items()):
+            weights = [c["weight"] for c in state.values() if not c["retired"]]
+            avg = sum(weights) / len(weights) if weights else 0.0
+            out.append({
+                "id": sid,
+                "avg_weight": round(avg, 3),
+                "mastered": sum(1 for c in state.values() if band(c["weight"]) == "green"),
+                "gaps": sum(1 for c in state.values() if band(c["weight"]) == "red"),
+                "total": len(state),
+            })
+        return {"students": out}
+
+    def _view_concept(self, cid: str, rec: dict, offset_days: int) -> dict:
+        virtual_now = now_ms() + offset_days * DAY_MS
+        age_days = max(0, (virtual_now - rec["updated_at"]) / DAY_MS)
+        rusty = (not rec["retired"] and band(rec["weight"]) == "green"
+                 and age_days >= RUSTY_AFTER_DAYS)
+        c = self.concepts[cid]
+        return {
+            "id": cid,
+            "name": c["name"],
+            "summary": c["summary"],
+            "requires": c["requires"],
+            "weight": round(rec["weight"], 3),
+            "band": band(rec["weight"]),
+            "rusty": rusty,
+            "retired": rec["retired"],
+            "age_days": round(age_days, 1),
+        }
+
+    def _open_assignments(self, student: str) -> list[dict]:
+        """Teacher-assigned reviews still relevant to this student (red or rusty)."""
+        state = self._states.get(student, {})
+        out = []
+        seen = set()
+        for a in reversed(self._assignments):
+            cid = a["concept"]
+            if cid in seen or cid not in self.concepts or cid not in state:
+                continue
+            if student not in a.get("student_ids", []):
+                continue
+            view = self._view_concept(cid, state[cid], 0)
+            if view["band"] == "red" or view["rusty"]:
+                seen.add(cid)
+                missing = [
+                    self.concepts[r]["name"]
+                    for r in self.concepts[cid]["requires"]
+                    if state[r]["weight"] < RED_MAX
+                ]
+                out.append({
+                    "concept": cid,
+                    "name": self.concepts[cid]["name"],
+                    "unlocked": not missing,
+                    "blocked_by": missing,
+                })
+        return out
+
+    def _student_session_id(self, student: str) -> str:
+        session = self._sessions.setdefault(student, {"id": str(uuid.uuid4()), "answers": []})
+        return session["id"]
+
+    def _why_next(self, student: str, concept: str | None) -> dict | None:
+        if not concept:
+            return None
+        state = self._require(student)
+        c = self.concepts[concept]
+        prereqs = []
+        for req in c["requires"]:
+            view = self._view_concept(req, state[req], 0)
+            prereqs.append({
+                "id": req,
+                "name": view["name"],
+                "weight": view["weight"],
+                "band": view["band"],
+                "ready": view["weight"] >= RED_MAX,
+            })
+        return {
+            "concept": concept,
+            "name": c["name"],
+            "rule": "frontier = not mastered, not retired, and every prerequisite is at least amber",
+            "prerequisites": prereqs,
+            "graph_chain": [p["name"] for p in prereqs] + [c["name"]],
+        }
+
+    def student_graph(self, student: str, offset_days: int = 0) -> dict:
+        state = self._require(student)
+        nodes = [self._view_concept(cid, rec, offset_days) for cid, rec in state.items()]
+        edges = [
+            {"from": req, "to": cid, "type": "requires"}
+            for cid, c in self.concepts.items() for req in c["requires"]
+        ]
+        frontier = self._frontier(student)
+        next_step = frontier[0] if frontier else None
+        session = self._sessions.get(student, {"id": None, "answers": []})
+        return {
+            "student": student,
+            "nodes": nodes,
+            "edges": edges,
+            "frontier": frontier,
+            "next_step": next_step,
+            "why_next": self._why_next(student, next_step),
+            "assignments": self._open_assignments(student),
+            "session": {
+                "id": session.get("id"),
+                "answers": len(session.get("answers", [])),
+            },
+        }
+
+    def _rel_time(self, days: float) -> str:
+        if days < 1:
+            return "today"
+        if days < 2:
+            return "yesterday"
+        if days < 21:
+            return f"{round(days)} days ago"
+        if days < 60:
+            return f"{round(days / 7)} weeks ago"
+        return f"{round(days / 30)} months ago"
+
+    def student_timeline(self, student: str, offset_days: int = 0) -> dict:
+        """The student's learning over time, reconstructed from when each concept
+        was last practiced. Mastered-but-long-untouched concepts read as 'now
+        rusty' -- which is the forgetting curve the product is built around."""
+        state = self._require(student)
+        events = []
+        for cid, rec in state.items():
+            v = self._view_concept(cid, rec, offset_days)
+            if v["band"] == "red" and not v["retired"]:
+                continue  # never engaged: no history event
+            if v["retired"]:
+                verb, tone = "retired from active practice", "muted"
+            elif v["rusty"]:
+                verb, tone = "mastered, but let it fade (now rusty)", "bad"
+            elif v["band"] == "green":
+                verb, tone = "mastered", "good"
+            else:
+                verb, tone = "started learning", "amber"
+            events.append({
+                "concept": cid, "name": v["name"], "band": v["band"],
+                "rusty": v["rusty"], "retired": v["retired"],
+                "age_days": v["age_days"], "when": self._rel_time(v["age_days"]),
+                "verb": verb, "tone": tone,
+            })
+        events.sort(key=lambda e: -e["age_days"])  # oldest first = a journey
+        mastered = sum(1 for e in events if e["band"] == "green" and not e["rusty"])
+        rusty = sum(1 for e in events if e["rusty"])
+        return {"student": student, "events": events, "offset_days": offset_days,
+                "summary": {"mastered": mastered, "rusty": rusty,
+                            "engaged": len(events)}}
+
+    def student_report(self, student: str) -> dict:
+        """A parent-ready narrative summary. Demo mode builds it deterministically;
+        CloudProvider overrides with a real recall() against the student's dataset."""
+        state = self._require(student)
+        mastered = [self.concepts[c]["name"] for c, r in state.items()
+                    if r["retired"] or band(r["weight"]) == "green"]
+        learning = [self.concepts[c]["name"] for c, r in state.items()
+                    if band(r["weight"]) == "amber"]
+        gaps = [self.concepts[c]["name"] for c, r in state.items()
+                if band(r["weight"]) == "red" and not r["retired"]]
+        frontier = self._frontier(student)
+        nxt = self.concepts[frontier[0]]["name"] if frontier else None
+        parts = []
+        if mastered:
+            parts.append(f"{student} has mastered {len(mastered)} concept"
+                         f"{'s' if len(mastered) != 1 else ''}, including "
+                         f"{', '.join(mastered[:5])}.")
+        else:
+            parts.append(f"{student} is just getting started and has not "
+                         f"mastered any concepts yet.")
+        if learning:
+            parts.append(f"They are currently working through "
+                         f"{', '.join(learning[:4])}.")
+        if nxt:
+            parts.append(f"They are ready to learn {nxt} next.")
+        if gaps:
+            parts.append(f"The main gaps to focus on are {', '.join(gaps[:4])}.")
+        return {"student": student, "report": " ".join(parts), "cloud": False}
+
+    # ---------- frontier + quiz ----------
+
+    def _frontier(self, student: str) -> list[str]:
+        """Concepts whose prerequisites are all >= amber but which are not yet green.
+        This is the graph-native 'what should you learn next' decision."""
+        state = self._require(student)
+        out = []
+        for cid, c in self.concepts.items():
+            rec = state[cid]
+            if rec["retired"] or band(rec["weight"]) == "green":
+                continue
+            if all(state[r]["weight"] >= RED_MAX for r in c["requires"]):
+                out.append(cid)
+        # Finish in-progress (amber) concepts before opening new reds: this gives the
+        # demo its red -> amber -> green progression on a single node.
+        out.sort(key=lambda cid: (
+            0 if band(state[cid]["weight"]) == "amber" else 1,
+            state[cid]["weight"],
+            cid,
+        ))
+        return out
+
+    def quiz_next(self, student: str) -> dict:
+        frontier = self._frontier(student)
+        if not frontier:
+            return {"student": student, "done": True, "question": None,
+                    "message": "All frontier concepts mastered: nothing left to drill."}
+        cid = frontier[0]
+        questions = self.concepts[cid]["questions"]
+        cursor = self._question_cursor.get((student, cid), 0)
+        q = questions[cursor % len(questions)]
+        self._question_cursor[(student, cid)] = cursor + 1
+        session = self._sessions.setdefault(student, {"id": str(uuid.uuid4()), "answers": []})
+        return {
+            "student": student,
+            "done": False,
+            "session_id": session["id"],
+            "concept": self._view_concept(cid, self._require(student)[cid], 0),
+            "question": {"text": q["q"], "options": q["options"], "concept": cid},
+        }
+
+    def quiz_answer(self, student: str, concept: str, answer_index: int) -> dict:
+        state = self._require(student)
+        if concept not in self.concepts:
+            raise KeyError(f"unknown concept: {concept}")
+        questions = self.concepts[concept]["questions"]
+        cursor = max(0, self._question_cursor.get((student, concept), 1) - 1)
+        q = questions[cursor % len(questions)]
+        correct = answer_index == q["answer"]
+
+        rec = state[concept]
+        before = rec["weight"]
+        if correct:
+            rec["weight"] = min(1.0, rec["weight"] + LEARN_ALPHA * (1 - rec["weight"]))
+        else:
+            rec["weight"] = max(0.05, rec["weight"] - WRONG_FACTOR * rec["weight"])
+        rec["updated_at"] = now_ms()
+
+        session = self._sessions.setdefault(student, {"id": str(uuid.uuid4()), "answers": []})
+        session["answers"].append({"concept": concept, "correct": correct, "ts": rec["updated_at"]})
+        self._question_cursor[(student, concept)] = cursor + 1
+
+        return {
+            "student": student,
+            "concept": self._view_concept(concept, rec, 0),
+            "correct": correct,
+            "correct_option": q["options"][q["answer"]],
+            "weight_before": round(before, 3),
+            "weight_after": round(rec["weight"], 3),
+            "next": self.quiz_next(student),
+        }
+
+    # ---------- teacher ----------
+
+    def class_heatmap(self, offset_days: int = 0) -> dict:
+        rows = []
+        for cid, c in self.concepts.items():
+            views = [
+                self._view_concept(cid, state[cid], offset_days)
+                for state in self._states.values()
+            ]
+            n = len(views)
+            reds = sum(1 for v in views if v["band"] == "red")
+            ambers = sum(1 for v in views if v["band"] == "amber" or v["rusty"])
+            greens = sum(1 for v in views if v["band"] == "green" and not v["rusty"])
+            rows.append({
+                "id": cid,
+                "name": c["name"],
+                "requires": c["requires"],
+                "red_pct": round(100 * reds / n),
+                "amber_pct": round(100 * ambers / n),
+                "green_pct": round(100 * greens / n),
+                "avg_weight": round(sum(v["weight"] for v in views) / n, 3),
+                "red_students": [
+                    sid for sid, state in sorted(self._states.items())
+                    if band(state[cid]["weight"]) == "red"
+                ],
+                "why": (
+                    f"{reds}/{n} students are red on {c['name']}; "
+                    f"avg mastery {round(100 * sum(v['weight'] for v in views) / n)}%."
+                ),
+            })
+        rows.sort(key=lambda r: (-r["red_pct"], r["avg_weight"]))
+        teach_next = [r for r in rows if r["red_pct"] >= 50][:3]
+        return {"concepts": rows, "teach_next": teach_next,
+                "students": self.students()["students"]}
+
+    # ---------- teaching plan (graph-reasoned pedagogy) ----------
+
+    def _downstream_counts(self) -> dict[str, int]:
+        """For each concept, how many concepts transitively depend on it (its
+        leverage). Computed once over the prerequisite graph."""
+        # direct dependents: who lists cid in their requires
+        dependents: dict[str, list[str]] = {cid: [] for cid in self.concepts}
+        for cid, c in self.concepts.items():
+            for req in c["requires"]:
+                if req in dependents:
+                    dependents[req].append(cid)
+        counts: dict[str, int] = {}
+        for cid in self.concepts:
+            seen, stack = set(), list(dependents[cid])
+            while stack:
+                d = stack.pop()
+                if d in seen:
+                    continue
+                seen.add(d)
+                stack.extend(dependents[d])
+            counts[cid] = len(seen)
+        return counts
+
+    def teaching_plan(self, offset_days: int = 0, top_k: int = 4) -> dict:
+        """Reason over the class memory graph to recommend WHAT to teach next.
+        A concept scores high when many students are stuck on it AND ready for it
+        (prerequisites met) AND it unlocks many downstream concepts. The 'ready'
+        filter is what makes the order pedagogically correct: if students are stuck
+        on a concept but also stuck on its prerequisite, the prerequisite ranks
+        first. This is pedagogy emerging from the prerequisite graph, not a rule."""
+        downstream = self._downstream_counts()
+        n = len(self._states)
+        rows = []
+        for cid, c in self.concepts.items():
+            ready, blocked = [], []
+            for sid, state in sorted(self._states.items()):
+                v = self._view_concept(cid, state[cid], offset_days)
+                # only genuinely-red students need this concept TAUGHT. A rusty
+                # concept was mastered and faded: that is review (assign-review),
+                # not teaching, so it must not inflate the plan toward old basics.
+                if v["band"] == "red":
+                    if all(state[r]["weight"] >= RED_MAX for r in c["requires"]):
+                        ready.append(sid)
+                    else:
+                        blocked.append(sid)
+            unlocks = downstream[cid]
+            # a concept is worth teaching when students are ready and stuck on it
+            # AND it unlocks a lot downstream. This keeps the plan on foundational,
+            # high-leverage concepts and away from advanced gaps students are not
+            # ready for.
+            score = len(ready) * (1 + unlocks)
+            if not ready:
+                continue
+            prereq_names = [self.concepts[r]["name"] for r in c["requires"]]
+            unlock_names = [
+                self.concepts[o]["name"] for o, oc in self.concepts.items()
+                if cid in oc.get("requires", [])
+            ]
+            reason = (
+                f"{len(ready)} of {n} students are stuck on {c['name']} and ready "
+                f"to learn it now"
+                + (f" (prerequisites {', '.join(prereq_names)} already mastered)"
+                   if prereq_names else " (a starting concept)")
+                + (f", and it unlocks {unlocks} downstream "
+                   f"concept{'s' if unlocks != 1 else ''}"
+                   f"{' including ' + ', '.join(unlock_names[:3]) if unlock_names else ''}."
+                   if unlocks else ".")
+            )
+            rows.append({
+                "concept": cid,
+                "name": c["name"],
+                "ready_students": ready,
+                "blocked_students": blocked,
+                "ready_count": len(ready),
+                "blocked_count": len(blocked),
+                "unlocks": unlocks,
+                "unlock_names": unlock_names,
+                "prerequisites": prereq_names,
+                "score": score,
+                "reason": reason,
+            })
+        rows.sort(key=lambda r: (-r["score"], -r["ready_count"], r["name"]))
+        plan = rows[:top_k]
+        headline = None
+        if plan:
+            top = plan[0]
+            after = ", ".join(p["name"] for p in plan[1:3])
+            # the concept the MOST students are failing (the obvious, often-wrong pick)
+            worst_id, worst_reds = None, -1
+            for cid in self.concepts:
+                reds = sum(1 for st in self._states.values()
+                           if band(st[cid]["weight"]) == "red")
+                if reds > worst_reds:
+                    worst_id, worst_reds = cid, reds
+            contrast = ""
+            if worst_id and worst_id != top["concept"] and worst_reds > 0:
+                contrast = (
+                    f" The class is failing {self.concepts[worst_id]['name']} the "
+                    f"hardest, but most of them are not ready for it yet, so this "
+                    f"teaches the foundation that unblocks it."
+                )
+            # a decision, not a suggestion: lead with the command, then defend it
+            headline = (
+                f"This week, teach {top['name']}. {top['reason']}{contrast}"
+                + (f" After that: {after}." if after else "")
+            )
+        return {"plan": plan, "headline": headline, "class_size": n}
+
+    # ---------- lifecycle: forget / reset / ask ----------
+
+    def retire(self, student: str, concept: str) -> dict:
+        rec = self._require(student)[concept]
+        if band(rec["weight"]) != "green":
+            return {"ok": False, "reason": "only mastered (green) concepts can be retired"}
+        rec["retired"] = True
+        return {"ok": True, "student": student, "concept": concept}
+
+    def reset_student(self, student: str) -> dict:
+        self._states[student] = self._fresh_state()
+        self._sessions.pop(student, None)
+        self._question_cursor = {
+            k: v for k, v in self._question_cursor.items() if k[0] != student
+        }
+        return {"ok": True, "student": student}
+
+    def add_student(self, student: str) -> dict:
+        """Enroll a new student. Their memory starts fresh; in cloud mode their
+        Cognee dataset is created on their first ask/quiz (lazy seed)."""
+        sid = student.strip().lower()
+        if not STUDENT_NAME_RE.match(sid):
+            return {"ok": False,
+                    "reason": "name must be 2-16 chars: letters, digits, - or _ "
+                              "(starting with a letter)"}
+        if sid in self._states:
+            return {"ok": False, "reason": f"{sid} is already enrolled"}
+        self._states[sid] = self._fresh_state()
+        return {"ok": True, "student": sid}
+
+    def setup_class(self, students: list[str]) -> dict:
+        """A teacher sets up her whole class in one step: a list of names in,
+        a classroom of fresh memories out. Existing names are kept, not reset."""
+        added, kept, rejected = [], [], []
+        for raw in students:
+            name = str(raw).strip().lower()
+            if not name:
+                continue
+            if name in self._states:
+                kept.append(name)
+                continue
+            res = self.add_student(name)
+            (added if res.get("ok") else rejected).append(
+                name if res.get("ok") else {"name": name, "reason": res.get("reason")})
+        return {"ok": True, "added": added, "kept": kept, "rejected": rejected,
+                "class_size": len(self._states)}
+
+    # ---------- curriculum + teacher action ----------
+
+    def curricula(self) -> dict:
+        items = []
+        for path in [CURRICULUM_PATH, *sorted(IMPORTED_CURRICULUM_DIR.glob("*.json"))]:
+            try:
+                data = validate_curriculum(json.loads(path.read_text(encoding="utf-8")))
+            except Exception:
+                continue
+            items.append({
+                "domain": data["domain"],
+                "title": data["title"],
+                "concepts": len(data["concepts"]),
+                "active": data["domain"] == self.curriculum["domain"],
+                "source": "builtin" if path == CURRICULUM_PATH else "imported",
+            })
+        return {"active": self.curriculum["domain"], "curricula": items}
+
+    def import_curriculum(self, payload: dict) -> dict:
+        clean = validate_curriculum(payload)
+        IMPORTED_CURRICULUM_DIR.mkdir(parents=True, exist_ok=True)
+        path = IMPORTED_CURRICULUM_DIR / f"{clean['domain']}.json"
+        path.write_text(json.dumps(clean, indent=2), encoding="utf-8")
+        self.curriculum = clean
+        self.concepts = {c["id"]: c for c in clean["concepts"]}
+        self._states = {}
+        self._question_cursor = {}
+        self._sessions = {}
+        self._seed_all()
+        return {"ok": True, "domain": clean["domain"], "title": clean["title"],
+                "concepts": len(clean["concepts"])}
+
+    def assign_review(self, concept: str) -> dict:
+        if concept not in self.concepts:
+            raise KeyError(f"unknown concept: {concept}")
+        assignments = []
+        for sid, state in sorted(self._states.items()):
+            view = self._view_concept(concept, state[concept], 0)
+            if view["band"] == "red" or view["rusty"]:
+                assignments.append({
+                    "student": sid,
+                    "band": "rusty" if view["rusty"] else view["band"],
+                    "weight": view["weight"],
+                })
+        c = self.concepts[concept]
+        # visible to students in their own view (closes the intervention loop)
+        self._assignments.append({
+            "concept": concept,
+            "concept_name": c["name"],
+            "student_ids": [a["student"] for a in assignments],
+            "ts": now_ms(),
+        })
+        return {
+            "ok": True,
+            "concept": concept,
+            "concept_name": c["name"],
+            "assigned_count": len(assignments),
+            "students": assignments,
+            "why": (
+                f"Assigned because {len(assignments)} student(s) are red or rusty on "
+                f"{c['name']}; this turns a heat-map signal into an action list."
+            ),
+            "message": f"Assigned {c['name']} review to {len(assignments)} student(s).",
+        }
+
+    def close(self) -> None:
+        return None
+
+    def class_ask(self, question: str) -> dict:
+        """Teacher asks across ALL students' memories. Demo mode answers
+        deterministically from every student's mastery state; CloudProvider overrides
+        this with a real multi-dataset cognee recall()."""
+        ql = question.lower()
+        hits = [
+            (cid, c) for cid, c in self.concepts.items()
+            if cid.replace("-", " ") in ql or c["name"].lower() in ql
+        ]
+        if not hits:
+            hm = self.class_heatmap()
+            worst = hm["concepts"][0]
+            return {"answer":
+                    f"Biggest class-wide gap right now: {worst['name']} "
+                    f"({worst['red_pct']}% of the class is red on it).",
+                    "datasets": sorted(self._states), "cloud": False}
+        parts = []
+        for cid, c in hits:
+            status = ", ".join(
+                f"{sid}: {band(state[cid]['weight'])}"
+                for sid, state in sorted(self._states.items()))
+            parts.append(f"{c['name']}: {status}.")
+        return {"answer": " ".join(parts), "datasets": sorted(self._states),
+                "cloud": False}
+
+    def ask(self, student: str, question: str) -> dict:
+        """Demo mode: deterministic answer assembled from curriculum summaries of the
+        concepts mentioned in the question, grounded in the student's own mastery."""
+        state = self._require(student)
+        ql = question.lower()
+        hits = [
+            self._view_concept(cid, state[cid], 0)
+            for cid, c in self.concepts.items()
+            if cid.replace("-", " ") in ql or c["name"].lower() in ql
+        ]
+        if not hits:
+            frontier = self._frontier(student)
+            nxt = self.concepts[frontier[0]]["name"] if frontier else "nothing: all done"
+            return {"student": student, "answer":
+                    f"I don't have that concept in this curriculum. Your next step is: {nxt}.",
+                    "sources": []}
+        parts = []
+        for h in hits:
+            status = {"red": "a gap for you", "amber": "in progress",
+                      "green": "mastered"}[h["band"]]
+            parts.append(f"{h['name']}: {h['summary']} (currently {status})")
+        return {"student": student, "answer": " ".join(parts), "sources": hits}
+
+    # ---------- utils ----------
+
+    def _require(self, student: str) -> dict:
+        if student not in self._states:
+            raise KeyError(f"unknown student: {student}")
+        return self._states[student]
+
+
+class CloudProvider(DemoProvider):
+    """Real Cognee Cloud. Verified 2026-07-03 against the user's tenant:
+    serve 1.6s, remember ~16s (full ingestion pipeline), recall ~3.4s, forget ~2s.
+
+    Design (honesty policy: no capability is faked, limitations are stated inline):
+    - one Cloud DATASET per student (`student_<id>`), seeded once with the combined
+      curriculum document (a single remember() call: per-concept calls would take
+      ~6 min/student at measured latency);
+    - ask() -> real recall() scoped to the student's dataset;
+    - reset_student() -> real forget(dataset=...) then re-seed lazily;
+    - quiz traces (concept mastered) -> fire-and-forget remember() so the Cloud
+      console shows real learning activity;
+    - mastery weights are maintained app-layer and persisted to SQLite
+      (explicit-weights fallback; improve()-parity still ⚠️ unverified on Cloud).
+
+    Cognee's API is async; FastAPI endpoints here are sync: so all cognee calls run
+    on a dedicated background event loop thread (run_coroutine_threadsafe)."""
+
+    LEDGER_PATH = Path(__file__).resolve().parent / "mastery_ledger.sqlite"
+    LEGACY_STATE_PATH = Path(__file__).resolve().parent / "cloud_state.json"
+
+    def __init__(self, url: str, api_key: str):
+        super().__init__()
+        import asyncio
+        import threading
+
+        self._asyncio = asyncio
+        self._url = url
+        self._loop = asyncio.new_event_loop()
+        threading.Thread(target=self._loop.run_forever, daemon=True).start()
+
+        import cognee
+        self._cognee = cognee
+
+        self._connected = False
+        try:
+            self._call(cognee.serve(url=url, api_key=api_key), timeout=30)
+            self._connected = True
+        except Exception as err:  # demo shapes still work; badge shows offline cloud
+            print(f"[cloud] serve() failed, falling back to local state: {err}")
+
+        self._seeded: set[str] = set()
+        self._active_dataset: dict[str, str] = {}  # student -> real dataset name
+        self._ledger = SQLiteLedger(self.LEDGER_PATH)
+        self._load_state()
+
+    # ---------- async bridge ----------
+
+    def _call(self, coro, timeout=60):
+        fut = self._asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return fut.result(timeout)
+
+    def _fire_and_forget(self, coro):
+        async def safe():
+            try:
+                await coro
+            except Exception as err:
+                print(f"[cloud] background write failed (non-fatal): {err}")
+        self._asyncio.run_coroutine_threadsafe(safe(), self._loop)
+
+    # ---------- state persistence (weights survive restarts) ----------
+
+    def _load_state(self):
+        self._ledger.migrate_cloud_state_json(self.LEGACY_STATE_PATH, self.concepts)
+        # if the Cloud tenant changed, seeded-dataset tracking is stale (those
+        # datasets live on the OLD tenant): clear it so students re-seed here.
+        tenant = self._url.split("//")[-1].split(".")[0]
+        if self._ledger.sync_tenant(tenant):
+            print(f"[cloud] new tenant {tenant}: cleared stale seed tracking")
+        self._states = self._ledger.load_states(self._states)
+        self._seeded = self._ledger.seeded(self.curriculum["domain"])
+        # remember which actual (possibly versioned) dataset name each student uses
+        self._active_dataset = self._ledger.seeded_map(self.curriculum["domain"])
+        # assignments survive restarts: rehydrate from the intervention ledger
+        for iv in reversed(self._ledger.recent_interventions(limit=20)):
+            if iv["concept"] in self.concepts:
+                self._assignments.append({
+                    "concept": iv["concept"],
+                    "concept_name": iv["concept_name"],
+                    "student_ids": [s["student"] for s in iv["students"]],
+                    "ts": iv["created_at"],
+                })
+
+    def _save_state(self):
+        self._ledger.save_all(self._states)
+
+    def _seed_in_background(self, student: str):
+        """Create a student's cloud dataset without blocking the request.
+        ensure_seeded blocks (~24s), so run it on a daemon thread: enroll
+        returns instantly and the dataset appears on the tenant shortly after."""
+        if not self._connected:
+            return
+        import threading
+
+        def work():
+            try:
+                self.ensure_seeded(student)
+            except Exception as err:
+                print(f"[cloud] background seed for {student} failed: {err}")
+        threading.Thread(target=work, daemon=True).start()
+
+    # ---------- cloud dataset per student ----------
+
+    def _base_dataset(self, student: str) -> str:
+        domain = self.curriculum["domain"]
+        if domain == "python":
+            return f"student_{student}"
+        safe_domain = re.sub(r"[^a-z0-9_-]", "_", domain.lower())
+        return f"student_{safe_domain}_{student}"
+
+    def _dataset(self, student: str) -> str:
+        """The dataset actually in use. Normally the clean base name; only after a
+        reset-race does it carry a version suffix (see ensure_seeded)."""
+        return self._active_dataset.get(student) or self._base_dataset(student)
+
+    def _curriculum_doc(self, student: str) -> str:
+        """Seed document written for graph extraction, not just reading:
+        an identity sentence anchors the student as an entity (so recall can
+        answer 'tell me about alice'), and every prerequisite is stated as an
+        explicit relationship sentence so entity/edge extraction has clean
+        material to work with (per Cognee's own guidance: GraphRAG quality
+        follows relationship-rich input)."""
+        title = self.curriculum["title"]
+        lines = [
+            f"This is the personal learning memory of the student named {student}. "
+            f"{student} is studying the course '{title}'. {student} answers quiz "
+            f"questions, masters concepts one by one, and can ask this memory "
+            f"questions about the course.",
+            f"The course '{title}' is a prerequisite graph of "
+            f"{len(self.concepts)} concepts:",
+        ]
+        for c in self.curriculum["concepts"]:
+            line = f"The concept '{c['name']}' means: {c['summary']}"
+            if c["requires"]:
+                names = ", ".join(self.concepts[r]["name"] for r in c["requires"])
+                line += f" Learning '{c['name']}' requires first understanding: {names}."
+            lines.append(line)
+        return "\n".join(lines)
+
+    def _mastery_summary_doc(self, student: str) -> str:
+        """A natural-language snapshot of THIS student's real progress, so the
+        Cognee graph (and the Cloud console Search) can answer personal questions
+        like 'what has Cara mastered?' correctly instead of guessing from the
+        generic curriculum. Written additively (no forget), so it never races a
+        delete."""
+        state = self._states[student]
+        # ONE clean relationship sentence per concept, so entity/edge extraction
+        # (and retrieval) works, exactly like the prerequisite sentences that
+        # already answer reliably. A single comma list does not extract into edges.
+        parts = [f"Learning progress report for the student {student} in the "
+                 f"course '{self.curriculum['title']}'."]
+        for cid, rec in state.items():
+            name = self.concepts[cid]["name"]
+            b = band(rec["weight"])
+            if rec["retired"] or b == "green":
+                parts.append(f"{student} has mastered {name}.")
+            elif b == "amber":
+                parts.append(f"{student} is still learning {name} and has not "
+                             f"mastered it yet.")
+            else:
+                parts.append(f"{student} has a gap in {name} and has not started "
+                             f"it yet.")
+        frontier = self._frontier(student)
+        if frontier:
+            parts.append(f"{student} is most ready to learn "
+                         f"{self.concepts[frontier[0]]['name']} next.")
+        return " ".join(parts)
+
+    def refresh_cloud_memory(self, student: str):
+        """Additive write of the current mastery snapshot. Safe (no delete)."""
+        if not self._connected or self._dataset(student) not in self._seeded:
+            return
+        self._fire_and_forget(self._cognee.remember(
+            self._mastery_summary_doc(student),
+            dataset_name=self._dataset(student),
+            node_set=["progress"], self_improvement=False))
+
+    def _candidate_datasets(self, student: str):
+        """The clean base name first, then versioned fallbacks. A dataset that was
+        just forget()-ed deletes ASYNCHRONOUSLY on the tenant (observed: minutes),
+        so re-seeding the same name 409s until it settles. Rather than block a live
+        demo waiting, we fall back to student_alice_2, _3, ... which always succeeds
+        and never fights a pending delete. The clean name is tried first, so the
+        healthy path (and the Cognee console) still shows student_alice."""
+        base = self._base_dataset(student)
+        yield base
+        for v in range(2, 8):
+            yield f"{base}_{v}"
+
+    def ensure_seeded(self, student: str):
+        self._require(student)
+        active = self._dataset(student)
+        if not self._connected or active in self._seeded:
+            return
+        # node_set tags become first-class NodeSet graph nodes (probed OK 2026-07-04).
+        last_err = None
+        for dataset in self._candidate_datasets(student):
+            try:
+                # one quick retry on the clean name in case the delete just settled
+                for attempt in range(2):
+                    try:
+                        self._call(self._cognee.remember(
+                            self._curriculum_doc(student), dataset_name=dataset,
+                            node_set=["curriculum", self.curriculum["domain"]]),
+                            timeout=120)
+                        break
+                    except Exception as err:
+                        last_err = err
+                        if "409" in str(err) and attempt == 0:
+                            time.sleep(6)
+                            continue
+                        raise
+                # success: record the winning name as this student's active dataset
+                self._active_dataset[student] = dataset
+                self._seeded.add(dataset)
+                self._ledger.mark_seeded(dataset, student, self.curriculum["domain"])
+                # add this student's current mastery snapshot so personal questions
+                # ("what has X mastered?") answer correctly, not from the generic
+                # curriculum. Additive; never blocks the seed.
+                self.refresh_cloud_memory(student)
+                return
+            except Exception as err:
+                last_err = err
+                if "409" in str(err):
+                    continue  # this name is mid-delete; try the next version
+                raise
+        raise last_err if last_err else RuntimeError("seed failed")
+
+    # ---------- overrides ----------
+
+    def health(self) -> dict:
+        base = super().health()
+        # report clean student ids regardless of any version suffix on the dataset
+        seeded_students = sorted(
+            sid for sid in self._states
+            if self._dataset(sid) in self._seeded
+        )
+        base.update(mode="cloud", cloud_connected=self._connected,
+                    tenant=self._url.split("//")[-1].split(".")[0],
+                    seeded=seeded_students,
+                    seeded_students=seeded_students,
+                    ledger=str(self.LEDGER_PATH.name))
+        return base
+
+    def ask(self, student: str, question: str) -> dict:
+        self._require(student)
+        if self._connected:
+            try:
+                self.ensure_seeded(student)
+                res = self._call(self._cognee.recall(
+                    question,
+                    datasets=[self._dataset(student)],
+                    session_id=self._student_session_id(student),
+                    include_references=True), timeout=45)
+                items = res if isinstance(res, list) else [res]
+                text = next((str(i.get("text")) for i in items
+                             if isinstance(i, dict) and i.get("text")), None)
+                if text:
+                    return {"student": student, "answer": text, "cloud": True,
+                            "sources": [{"dataset": self._dataset(student),
+                                         "kind": i.get("kind", "graph_completion")}
+                                        for i in items if isinstance(i, dict)][:3]}
+            except Exception as err:
+                print(f"[cloud] recall failed, using local answer: {err}")
+        out = super().ask(student, question)
+        out["cloud"] = False
+        return out
+
+    def student_report(self, student: str) -> dict:
+        """Generate the report card from the student's OWN Cloud memory via recall,
+        so it is a real narrative pulled from their graph, not a template."""
+        self._require(student)
+        if self._connected:
+            try:
+                self.ensure_seeded(student)
+                res = self._call(self._cognee.recall(
+                    f"Write a short progress report for the student {student} for a "
+                    f"parent-teacher meeting. Say what {student} has already mastered, "
+                    f"what they are ready to learn next, and where they still have "
+                    f"gaps. Keep it to three or four encouraging sentences.",
+                    datasets=[self._dataset(student)]), timeout=45)
+                items = res if isinstance(res, list) else [res]
+                text = next((str(i.get("text")) for i in items
+                             if isinstance(i, dict) and i.get("text")), None)
+                if text and len(text) > 40:
+                    return {"student": student, "report": text, "cloud": True}
+            except Exception as err:
+                print(f"[cloud] report recall failed, using local summary: {err}")
+        return super().student_report(student)
+
+    def quiz_answer(self, student: str, concept: str, answer_index: int) -> dict:
+        res = super().quiz_answer(student, concept, answer_index)
+        self._save_state()
+        if self._connected:
+            session_id = self._student_session_id(student)
+            self._fire_and_forget(self._cognee.remember(
+                f"{student} answered a quiz question on '{res['concept']['name']}'. "
+                f"Correct={res['correct']}. Mastery moved from "
+                f"{res['weight_before']:.2f} to {res['weight_after']:.2f}.",
+                dataset_name=self._dataset(student),
+                session_id=session_id,
+                self_improvement=False))
+        # When a concept crosses into green, write a rich, relationship-bearing
+        # trace so Cognee extracts a real graph: the student becomes an entity
+        # linked to the concept they mastered and to what that concept unlocks.
+        # (GrandmaCare showed this is how connected recall answers emerge.)
+        if self._connected and res["concept"]["band"] == "green" and res["correct"]:
+            cid = res["concept"]["concept"] if "concept" in res["concept"] else concept
+            unlocks = [self.concepts[o]["name"] for o, c in self.concepts.items()
+                       if cid in c.get("requires", [])]
+            unlock_txt = (f" Mastering {res['concept']['name']} unlocks: "
+                          f"{', '.join(unlocks)}." if unlocks else "")
+            self._fire_and_forget(self._cognee.remember(
+                f"The student {student} has mastered the concept "
+                f"'{res['concept']['name']}' in the course "
+                f"'{self.curriculum['title']}'.{unlock_txt} "
+                f"{student} is now ready to learn the concepts it unlocks.",
+                dataset_name=self._dataset(student),
+                node_set=["mastery-trace"]))
+            # keep BOTH memories current: the student's personal snapshot AND the
+            # combined class graph, so the console and the teacher's class question
+            # reflect this new mastery immediately (additive, non-blocking).
+            self.refresh_cloud_memory(student)
+            self.refresh_class_overview()
+        return res
+
+    def retire(self, student: str, concept: str) -> dict:
+        out = super().retire(student, concept)
+        if out.get("ok"):
+            self._ledger.save_student(student, self._states[student])
+            if self._connected:
+                self._fire_and_forget(self._cognee.remember(
+                    f"{student} retired mastered concept '{concept}' from active practice.",
+                    dataset_name=self._dataset(student)))
+        return out
+
+    # ---------- combined class dataset (one graph for the whole class) ----------
+
+    def _class_dataset(self) -> str:
+        # "class_graph": the dense whole-class dataset. A distinct name from the
+        # old class_overview so a fresh dense seed never races that dataset's
+        # (minutes-long) async delete on the tenant.
+        domain = self.curriculum["domain"]
+        if domain == "python":
+            return "class_graph"
+        return f"class_graph_{re.sub(r'[^a-z0-9_-]', '_', domain.lower())}"
+
+    def _class_overview_doc(self) -> str:
+        """A DENSE, fully-connected class graph in one document: every student is
+        an entity, every concept is an entity, and every student-concept mastery
+        is stated as its own relationship sentence. Cognee extracts this into a
+        richly interconnected 'class brain' (students <-> concepts <-> prerequisite
+        concepts) rather than a sparse one. Individual sentences (not comma lists)
+        are what make both the graph dense AND recall accurate. Also carries the
+        prerequisite structure so concept-to-concept edges appear too."""
+        title = self.curriculum["title"]
+        lines = [
+            f"This is the shared learning memory of a whole class studying the "
+            f"course '{title}'. The class has {len(self._states)} students, and "
+            f"each student is learning the same {len(self.concepts)} concepts. "
+            f"The teacher uses this memory to see the whole class at once.",
+        ]
+        # concept -> concept prerequisite edges
+        for cid, c in self.concepts.items():
+            if c["requires"]:
+                reqs = " and ".join(self.concepts[r]["name"] for r in c["requires"])
+                lines.append(f"In this course, {c['name']} requires {reqs}.")
+        # student -> concept mastery edges (one sentence each = dense + extractable)
+        for sid, state in sorted(self._states.items()):
+            for cid, rec in state.items():
+                name = self.concepts[cid]["name"]
+                b = band(rec["weight"])
+                if rec["retired"] or b == "green":
+                    lines.append(f"The student {sid} has mastered {name}.")
+                elif b == "red":
+                    lines.append(f"The student {sid} has a gap in {name} "
+                                 f"and needs help with it.")
+                else:
+                    lines.append(f"The student {sid} is still learning {name}.")
+        return "\n".join(lines)
+
+    def ensure_class_seeded(self):
+        ds = self._class_dataset()
+        if not self._connected or ds in self._seeded:
+            return
+        for attempt in range(2):
+            try:
+                # dense class doc = many chunks to extract; allow a long window
+                self._call(self._cognee.remember(
+                    self._class_overview_doc(), dataset_name=ds,
+                    node_set=["class-overview", self.curriculum["domain"]]),
+                    timeout=300)
+                break
+            except Exception as err:
+                if "409" in str(err) and attempt == 0:
+                    time.sleep(8)
+                    continue
+                raise
+        self._seeded.add(ds)
+        self._ledger.mark_seeded(ds, "__class__", self.curriculum["domain"])
+
+    def refresh_class_overview(self):
+        """Additive update of the class graph after mastery changes. Safe."""
+        if not self._connected or self._class_dataset() not in self._seeded:
+            return
+        self._fire_and_forget(self._cognee.remember(
+            self._class_overview_doc(), dataset_name=self._class_dataset(),
+            node_set=["class-overview"], self_improvement=False))
+
+    def class_ask(self, question: str) -> dict:
+        """The teacher's cross-student question. Preferred path: ONE recall against
+        the combined class_overview dataset, giving a synthesized class-level answer
+        ('which students struggle with recursion' -> a single list). Falls back to
+        multi-dataset recall across the per-student datasets, then to demo."""
+        if self._connected:
+            try:
+                self.ensure_class_seeded()
+                res = self._call(self._cognee.recall(
+                    question, datasets=[self._class_dataset()], top_k=12),
+                    timeout=60)
+                items = res if isinstance(res, list) else [res]
+                text = next((str(i.get("text")) for i in items
+                             if isinstance(i, dict) and i.get("text")), None)
+                if text:
+                    return {"answer": text, "cloud": True, "combined": True,
+                            "dataset": self._class_dataset()}
+            except Exception as err:
+                print(f"[cloud] class-overview recall failed, trying per-student: {err}")
+        if self._connected:
+            try:
+                # fallback: multi-dataset recall across per-student datasets
+                datasets = [self._dataset(s) for s in sorted(self._states)
+                            if self._dataset(s) in self._seeded
+                            and s in self._states]
+                if not datasets:
+                    for sid in ("alice", "bob", "cara"):
+                        if sid in self._states:
+                            self.ensure_seeded(sid)
+                    datasets = [self._dataset(s) for s in ("alice", "bob", "cara")
+                                if s in self._states]
+                res = self._call(self._cognee.recall(
+                    question, datasets=datasets, top_k=8), timeout=60)
+                items = res if isinstance(res, list) else [res]
+                per_student = []
+                for i in items:
+                    if not isinstance(i, dict) or not i.get("text"):
+                        continue
+                    ds = str(i.get("dataset_name", ""))
+                    who = ds.replace("student_", "") or "class"
+                    per_student.append({"student": who, "text": str(i["text"])})
+                if per_student:
+                    answer = "  ".join(
+                        f"[{p['student']}] {p['text']}" for p in per_student)
+                    return {"answer": answer, "per_student": per_student,
+                            "datasets": datasets, "cloud": True}
+            except Exception as err:
+                print(f"[cloud] class recall failed, using local answer: {err}")
+        out = super().class_ask(question)
+        out["cloud"] = False
+        return out
+
+    def reset_student(self, student: str) -> dict:
+        dataset = self._dataset(student)
+        if self._connected and dataset in self._seeded:
+            try:
+                self._call(self._cognee.forget(dataset=dataset), timeout=45)
+                self._seeded.discard(dataset)
+                self._ledger.unmark_seeded(dataset)
+                # advance to a fresh name so the next seed does not race this
+                # dataset's async delete (the 409 root cause). ensure_seeded still
+                # tries the clean base first if that has finished deleting.
+                self._active_dataset.pop(student, None)
+            except Exception as err:
+                print(f"[cloud] forget failed (continuing with local reset): {err}")
+        out = super().reset_student(student)
+        self._ledger.save_student(student, self._states[student])
+        return out
+
+    def add_student(self, student: str) -> dict:
+        out = super().add_student(student)
+        if out.get("ok"):
+            self._ledger.save_student(out["student"], self._states[out["student"]])
+            # give the new student a Cloud dataset right away (background, ~24s)
+            self._seed_in_background(out["student"])
+        return out
+
+    def setup_class(self, students: list[str]) -> dict:
+        out = super().setup_class(students)
+        for sid in out.get("added", []):
+            self._ledger.save_student(sid, self._states[sid])
+            self._seed_in_background(sid)
+        return out
+
+    def import_curriculum(self, payload: dict) -> dict:
+        out = super().import_curriculum(payload)
+        self._ledger.save_all(self._states)
+        self._seeded = self._ledger.seeded(self.curriculum["domain"])
+        return out
+
+    def teaching_plan(self, offset_days: int = 0, top_k: int = 4) -> dict:
+        out = super().teaching_plan(offset_days, top_k)
+        # write the recommendation into the class memory so a teacher can also ASK
+        # the cloud "what should I teach this week?" and recall it (closes the loop:
+        # the plan is both graph-reasoned AND stored as queryable class memory).
+        if self._connected and out.get("headline") and self._class_dataset() in self._seeded:
+            self._fire_and_forget(self._cognee.remember(
+                f"This week's recommended teaching plan for the class: {out['headline']}",
+                dataset_name=self._class_dataset(),
+                node_set=["teaching-plan"], self_improvement=False))
+        return out
+
+    def assign_review(self, concept: str) -> dict:
+        out = super().assign_review(concept)
+        if out.get("ok"):
+            out["intervention"] = self._ledger.create_intervention(
+                out["concept"], out["concept_name"], out["students"])
+            if self._connected and out["students"]:
+                names = ", ".join(s["student"] for s in out["students"])
+                self._fire_and_forget(self._cognee.remember(
+                    f"Teacher assigned review for '{out['concept_name']}' to: {names}.",
+                    dataset_name="class_interventions",
+                    node_set=["teacher-intervention", self.curriculum["domain"]]))
+        out["recent"] = self._ledger.recent_interventions()
+        return out
+
+    def close(self) -> None:
+        if not getattr(self, "_loop", None):
+            return
+
+        async def close_telemetry():
+            try:
+                import cognee.shared.utils as utils
+
+                session = getattr(utils, "_telemetry_session", None)
+                if session and not session.closed:
+                    await session.close()
+                utils._telemetry_session = None
+                utils._telemetry_session_loop = None
+            except Exception:
+                pass
+
+        if self._connected:
+            try:
+                self._call(self._cognee.disconnect(), timeout=20)
+            except Exception as err:
+                print(f"[cloud] disconnect failed during shutdown: {err}")
+
+        try:
+            self._call(close_telemetry(), timeout=10)
+        except Exception:
+            pass
+
+        try:
+            self._loop.call_soon_threadsafe(self._loop.stop)
+        except Exception:
+            pass
+
+
+def make_provider(mode: str) -> ClassroomProvider:
+    if mode == "demo":
+        return DemoProvider()
+    if mode == "cloud":
+        import os
+        url = os.environ.get("COGNEE_CLOUD_URL", "")
+        key = os.environ.get("COGNEE_CLOUD_API_KEY", "")
+        if not url or not key:
+            raise RuntimeError("CLASSROOM_MODE=cloud needs COGNEE_CLOUD_URL and "
+                               "COGNEE_CLOUD_API_KEY in backend/.env")
+        return CloudProvider(url, key)
+    raise ValueError(f"unknown CLASSROOM_MODE: {mode}")

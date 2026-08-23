@@ -1,0 +1,27 @@
+# --- Core AI & Orchestration ---
+oumi[gpu]                         # The main framework for training/eval/inference
+torch>=2.1.2                 # PyTorch (ensure CUDA version matches your system)
+vllm>=0.6.3                  # High-throughput inference engine (PagedAttention)
+transformers>=4.40.0         # Hugging Face models & tokenizers
+peft>=0.10.0                 # For LoRA/Adapter support
+datasets                     # To load datasets (GSM8k, etc.)
+trl                          # Transformer Reinforcement Learning (for GRPO)
+accelerate                   # For efficient hardware usage
+
+# --- Backend API ---
+fastapi>=0.110.0             # The API framework
+uvicorn[standard]>=0.29.0    # Server to run FastAPI
+pydantic>=2.7.0              # Data validation (used in Request Models)
+python-multipart             # Required for file uploads/downloads
+python-dotenv                # To manage environment variables
+
+# --- Utilities ---
+numpy<2.0.0                  # Critical: NumPy 2.0 breaks many ML libs, stick to 1.x
+requests                     # For making HTTP calls (if backend calls other APIs)
+aiofiles                     # For async file handling
+websockets                   # For real-time communication (if used)
+packaging                    # Version checking utility
+
+# --- Optional / Development ---
+# bitsandbytes               # Uncomment if you implement quantization later
+# wandb                      # Uncomment if you enable Weights & Biases logging

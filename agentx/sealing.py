@@ -79,15 +79,31 @@ def _root_key() -> bytes:
     """
     raw = os.environ.get("AGENT_X_ROOT_KEY", "").strip()
     if raw:
+        # Set-but-malformed is a configuration error on EITHER engine, not a
+        # reason to quietly use different key material. Every stored record is
+        # encrypted under a key wrapped by this one; falling back to a local key
+        # would make existing content undecryptable and new content unreadable by
+        # the deployment that set the variable — and nothing would say so.
+        # Unset still falls back on the local engine, which is the documented
+        # out-of-the-box path.
         try:
             k = base64.b64decode(raw, validate=True)
-            if len(k) in (16, 24, 32):
-                return k
-        except Exception:
-            pass
+        except Exception as exc:
+            raise RuntimeError(
+                "AGENT_X_ROOT_KEY is set but is not valid base64. It wraps every "
+                "per-subject data key, so Agent X will not fall back to "
+                "different key material — doing so would leave existing records "
+                f"undecryptable. Fix the value or unset it. ({exc})") from exc
+        if len(k) not in (16, 24, 32):
+            raise RuntimeError(
+                f"AGENT_X_ROOT_KEY decodes to {len(k)} bytes; it must be a "
+                f"base64 AES-128/192/256 key (16, 24 or 32 bytes). Generate one "
+                f"with `python -c \"from db import store; "
+                f"print(store.generate_root_key())\"`.")
+        return k
     if store.select_engine() == "cockroachdb":
         raise RuntimeError(
-            "AGENT_X_ROOT_KEY is unset or malformed. It must be a base64 "
+            "AGENT_X_ROOT_KEY is unset. It must be a base64 "
             "AES-128/192/256 key. Generate one with "
             "`python -c \"from db import store; print(store.generate_root_key())\"` "
             "and put it in .env before running against CockroachDB.")
@@ -133,19 +149,46 @@ def signing_key():
 
     pem = os.environ.get("AGENT_X_SIGNING_KEY", "").strip()
     if pem:
+        # A CONFIGURED-BUT-BROKEN key must never fall through to another one.
+        #
+        # Swallowing this was a real hole. An operator sets this variable
+        # precisely so receipts verify against the public key they published; if
+        # the value is malformed the old code silently signed with a per-host key
+        # instead, and every receipt then failed verification against the
+        # published key with nothing anywhere saying why. Silently signing with
+        # an identity nobody expects is worse than refusing to start.
+        #
+        # Absent is a different case and still falls back — see below.
         try:
-            return serialization.load_pem_private_key(_b64.b64decode(pem), password=None)
-        except Exception:
-            pass
+            return serialization.load_pem_private_key(_b64.b64decode(pem),
+                                                      password=None)
+        except Exception as exc:
+            raise RuntimeError(
+                "AGENT_X_SIGNING_KEY is set but could not be read as a "
+                "base64-encoded PEM private key, so Agent X cannot sign with "
+                "the identity this deployment declared. Refusing to fall back "
+                "to a different key: receipts signed with one would fail "
+                "verification against your published key. Generate a valid key "
+                "with `python -c \"from aws import certificate; "
+                "print(certificate.generate_signing_key())\"`, or unset the "
+                f"variable to use a local per-host key. ({exc})") from exc
 
     path = os.path.join(os.path.dirname(store.sqlite_path()), "agentx.signkey")
     if os.path.exists(path):
+        # An unreadable local keyfile is likewise not a reason to mint a new
+        # identity: the file exists because receipts were already signed with it,
+        # and quietly replacing it breaks every one of them.
         try:
             with open(path, "rb") as f:
                 return serialization.load_pem_private_key(
                     _b64.b64decode(f.read().strip()), password=None)
-        except Exception:
-            pass
+        except Exception as exc:
+            raise RuntimeError(
+                f"The local signing key at {path} exists but could not be read "
+                f"({exc}). Receipts were signed with it, so Agent X will not "
+                f"mint a replacement — that would invalidate every receipt "
+                f"already issued. Restore the file from backup, or move it "
+                f"aside deliberately to start a new signing identity.") from exc
 
     key = ec.generate_private_key(ec.SECP256R1())
     blob = _b64.b64encode(key.private_bytes(

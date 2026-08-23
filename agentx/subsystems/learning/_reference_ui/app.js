@@ -1,0 +1,1149 @@
+/* Classroom Memory frontend.
+   Graph sizing relies on four settings that must stay together, or vis-network
+   renders off-centre inside a flex parent:
+   autoResize:false, stabilization fit, absolute-fill CSS, fit({animation:false}). */
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+const state = {
+  view: "app",
+  student: "alice",
+  offsetDays: 0,
+  studentNet: null,
+  teacherNet: null,
+  question: null,
+  teacherDrill: null,
+  health: null,
+  teacherHeatmap: null,
+  lastStudentGraph: null,
+};
+
+let activeMaximized = null;
+
+const BAND_COLORS = {
+  red: { background: "#5a1f1f", border: "#e04b4b" },
+  amber: { background: "#4d3a17", border: "#f0b25a" },
+  green: { background: "#20402a", border: "#7cc48c" },
+  rusty: { background: "#3a2f1d", border: "#9a7c48" },
+  retired: { background: "#1d1d19", border: "#55534b" },
+};
+
+/* balanced two-line label: "Variables & assignment" -> "Variables &\nassignment",
+   never one word per line */
+function wrapLabel(name) {
+  const words = name.split(" ");
+  if (words.length < 2 || name.length <= 12) return name;
+  let best = name;
+  let bestDiff = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const a = words.slice(0, i).join(" ");
+    const b = words.slice(i).join(" ");
+    const d = Math.abs(a.length - b.length);
+    if (d < bestDiff) { bestDiff = d; best = a + "\n" + b; }
+  }
+  return best;
+}
+
+function icons() {
+  if (window.lucide) window.lucide.createIcons();
+}
+
+/* Never let one broken wiring block kill every other button. */
+function safely(label, fn) {
+  try {
+    fn();
+  } catch (err) {
+    console.error(`[wire:${label}]`, err);
+    const badge = $("#mode-badge");
+    if (badge) badge.textContent = `ui error: ${label}`;
+  }
+}
+
+/* Surface runtime errors instead of dying silently. */
+window.addEventListener("error", (e) => {
+  console.error("[runtime]", e.error || e.message);
+});
+window.addEventListener("unhandledrejection", (e) => {
+  console.error("[promise]", e.reason);
+});
+
+const LIFECYCLE_EXPLAIN = {
+  remember: ["remember()", "Seeds each student's Cognee Cloud dataset with the curriculum and writes a trace every time a concept is mastered."],
+  recall: ["recall()", "Powers the ask box: answers come from this student's own cloud memory graph, with dataset provenance."],
+  improve: ["improve semantics", "Every quiz answer re-weights concept mastery, following Cognee's feedback-weight design (app-side until Cloud exposes remote improve())."],
+  forget: ["forget()", "Retiring a mastered concept and resetting a student are real deletions: forget(dataset) runs on the tenant."],
+};
+
+function viewFromHash() {
+  if (location.hash === "#teacher") return "teacher";
+  if (location.hash === "#about") return "about";
+  return "app";
+}
+
+function fitVisibleGraphs() {
+  window.requestAnimationFrame(() => {
+    [state.studentNet, state.teacherNet].forEach((net) => {
+      if (net && net.body) {
+        net.redraw();
+        net.fit({ animation: false });
+      }
+    });
+  });
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (!res.ok) {
+    let detail = `${path}: ${res.status}`;
+    try {
+      const body = await res.json();
+      detail = body.detail || detail;
+    } catch (err) {
+      // Keep the status fallback.
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+/* ---------- lifecycle strip + log + kicker ---------- */
+
+function lifecycle(step) {
+  const el = $(`#life-${step}`);
+  if (!el) return;
+  el.classList.add("active");
+  setTimeout(() => { if (step !== "remember") el.classList.remove("active"); }, 2600);
+}
+
+function log(html, cls = "") {
+  const box = $("#session-log");
+  const div = document.createElement("div");
+  if (cls) div.className = cls;
+  div.innerHTML = html;
+  box.prepend(div);
+  while (box.children.length > 14) box.removeChild(box.lastChild);
+}
+
+function kicker(k, r) {
+  if (k) $("#case-kicker").textContent = k;
+  if (r) $("#case-result").textContent = r;
+}
+
+/* ---------- graph rendering (shared centering fixes) ---------- */
+
+function nodeStyle(n) {
+  let key = n.band;
+  if (n.retired) key = "retired";
+  else if (n.rusty) key = "rusty";
+  const c = BAND_COLORS[key];
+  return {
+    id: n.id,
+    label: wrapLabel(n.name),
+    title: `${n.name}: ${n.summary}\nmastery ${(n.weight * 100).toFixed(0)}%` +
+      (n.rusty ? " (rusty)" : "") + (n.retired ? " (retired)" : ""),
+    shape: "dot",
+    size: 15 + n.weight * 18,
+    color: { background: c.background, border: c.border, highlight: c },
+    borderWidth: n.retired ? 1 : 3,
+    font: {
+      color: n.retired ? "#6f6d67" : "#f1f0e8",
+      size: 12.5,
+      face: "Cascadia Mono, Consolas, monospace",
+      strokeWidth: 4,
+      strokeColor: "#0d0e0c",
+      vadjust: 2,
+    },
+    opacity: n.rusty ? 0.75 : 1,
+  };
+}
+
+function renderGraph(el, current, payload, opts = {}) {
+  const nodes = payload.nodes.map(nodeStyle);
+  const edges = payload.edges.map((e) => ({
+    from: e.from, to: e.to,
+    arrows: { to: { enabled: true, scaleFactor: 0.55 } },
+    color: { color: "#454540", highlight: "#6f6d67" },
+    width: 1.5,
+    smooth: { type: "continuous", roundness: 0.35 },
+  }));
+
+  if (current && current.body) {
+    current.setData({ nodes, edges });
+    setTimeout(() => current.fit({ animation: false }), 300);
+    return current;
+  }
+
+  const net = new vis.Network(el, { nodes, edges }, {
+    autoResize: false,
+    physics: {
+      barnesHut: {
+        gravitationalConstant: -5200,
+        springLength: 150,
+        avoidOverlap: 0.35,
+      },
+      stabilization: { iterations: 240, fit: true },
+    },
+    interaction: { hover: true, tooltipDelay: 120 },
+  });
+  const rect = el.getBoundingClientRect();
+  if (rect.width > 20 && rect.height > 20) net.setSize(rect.width + "px", rect.height + "px");
+  net.once("stabilizationIterationsDone", () => {
+    net.fit({ animation: false });
+    setTimeout(() => net.fit({ animation: false }), 350);
+  });
+  if (window.ResizeObserver) {
+    new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 20 && r.height > 20) {
+        net.setSize(r.width + "px", r.height + "px");
+        net.redraw();
+        net.fit({ animation: false });
+      }
+    }).observe(el);
+  }
+  if (opts.onClick) net.on("click", opts.onClick);
+  return net;
+}
+
+/* ---------- concept inspector + cloud memory contents (transparency) ---------- */
+
+function showConceptDetail(nodeId) {
+  const g = state.lastStudentGraph;
+  if (!g) return;
+  const n = g.nodes.find((x) => x.id === nodeId);
+  if (!n) return;
+  const reqs = n.requires.length
+    ? n.requires.map((r) => {
+        const p = g.nodes.find((x) => x.id === r);
+        return p ? `${p.name} (${(p.weight * 100).toFixed(0)}%)` : r;
+      }).join(", ")
+    : "none: a starting concept";
+  const lines = [
+    `${n.name}`,
+    `${n.summary}`,
+    ``,
+    `mastery: ${(n.weight * 100).toFixed(0)}% (${n.retired ? "retired" : n.rusty ? "rusty" : n.band})`,
+    `prerequisites: ${reqs}`,
+    `last practiced: ${n.age_days < 1 ? "today" : n.age_days.toFixed(0) + " days ago"}`,
+  ];
+  if (n.band === "green") {
+    lines.push(`cloud memory: a mastery trace was written with remember()`);
+  }
+  $("#node-detail").textContent = lines.join("\n");
+  $("#node-detail-card").classList.remove("hidden");
+}
+
+async function generateReport() {
+  const modal = $("#report-modal");
+  const body = $("#report-body");
+  const sub = $("#report-sub");
+  const who = state.student;
+  $("#report-title").textContent = `Progress Report — ${who}`;
+  body.textContent = "generating from " + who + "'s Cognee Cloud memory… (recall, ~7s)";
+  sub.textContent = "Generated from the student's own Cognee Cloud memory.";
+  modal.classList.remove("hidden");
+  icons();
+  lifecycle("recall");
+  try {
+    const r = await api(`/api/student/report?student=${who}`);
+    body.textContent = r.report;
+    sub.textContent = r.cloud
+      ? "Generated live from " + who + "'s Cognee Cloud memory via recall()."
+      : "Generated from " + who + "'s mastery state (demo mode).";
+    log(`<b>report card</b> generated for ${who}`, r.cloud ? "good" : "");
+  } catch (err) {
+    body.textContent = "Could not generate the report. Try again.";
+  }
+}
+
+async function loadTimeline() {
+  const box = $("#learning-timeline");
+  try {
+    const t = await api(`/api/student/timeline?student=${state.student}&offset_days=${state.offsetDays}`);
+    if (!t.events.length) {
+      box.innerHTML = `<div class="tl-empty">${state.student} just started — no learning history yet. Answer some quiz questions to build the timeline.</div>`;
+      $("#timeline-summary").textContent = "";
+      return;
+    }
+    $("#timeline-summary").textContent =
+      `${t.summary.mastered} fresh · ${t.summary.rusty} rusty`;
+    box.innerHTML = t.events.map((e) =>
+      `<div class="tl-row ${e.tone}">` +
+        `<span class="tl-when">${e.when}</span>` +
+        `<span class="tl-what"><b>${escapeHtml(e.name)}</b> — ${escapeHtml(e.verb)}</span>` +
+      `</div>`
+    ).join("");
+  } catch (err) {
+    box.innerHTML = `<div class="tl-empty">timeline unavailable.</div>`;
+  }
+}
+
+function renderMemoryContents(g) {
+  const health = state.health || {};
+  const seededStudents = health.seeded_students || health.seeded || [];
+  const seeded = seededStudents.includes(state.student);
+  const domainPrefix = health.domain && health.domain !== "python"
+    ? `${health.domain}_`
+    : "";
+  const traces = g.nodes.filter((n) => n.band === "green" || n.retired);
+  const session = g.session || {};
+  const lines = [
+    `dataset: student_${domainPrefix}${state.student}`,
+    seeded
+      ? `curriculum seed: written (one ${g.nodes.length}-concept document, node_set: curriculum)`
+      : `curriculum seed: created on this student's first question`,
+    `session memory: ${session.answers || 0} quiz event(s) remembered for this learning session`,
+  ];
+  if (traces.length) {
+    lines.push(`mastery traces written with remember():`);
+    traces.forEach((n) => lines.push(`  - ${n.name}${n.retired ? " (retired)" : ""}`));
+  } else {
+    lines.push(`mastery traces: none yet. master a concept to write one.`);
+  }
+  lines.push(``, `the ask box recall() reads exactly this memory.`);
+  $("#memory-contents").textContent = lines.join("\n");
+}
+
+/* ---------- cockpit ---------- */
+
+async function loadCockpit() {
+  const h = await api("/api/health");
+  state.health = h;
+  $("#mode-badge").textContent = h.cloud_connected ? "cognee cloud" : `mode: ${h.mode}`;
+  $("#ck-backend").textContent = h.cloud_connected ? "cognee cloud (live)" : h.mode;
+  $("#ck-domain").textContent = h.domain;
+  $("#ck-domain").title = h.title || h.domain;
+  $("#ck-concepts").textContent = h.concepts;
+  $("#ck-tenant").textContent = h.tenant ? h.tenant.slice(0, 18) + "…" : "local demo";
+  const seeded = h.seeded || [];
+  $("#ck-seeded").textContent = seeded.length ? `seeded: ${seeded.join(", ")}` : "seeded on first ask";
+
+  const s = await api("/api/students");
+  const box = $("#cockpit-students");
+  box.innerHTML = "";
+  s.students.forEach((st) => {
+    const b = document.createElement("button");
+    if (st.id === state.student) b.classList.add("active");
+    b.innerHTML = `<span class="who">${st.id}</span>` +
+      `<span class="mini">${st.mastered} mastered · ${st.gaps} gaps · ${Math.round(st.mastered / st.total * 100)}% mastered</span>`;
+    b.onclick = () => {
+      state.student = st.id;
+      $("#student-select").value = st.id;
+      setView("app");
+      loadStudentGraph();
+      $("#workbench").scrollIntoView({ behavior: "smooth" });
+    };
+    box.appendChild(b);
+  });
+  return s;
+}
+
+/* ---------- student console ---------- */
+
+async function loadStudents() {
+  const data = await api("/api/students");
+  const sel = $("#student-select");
+  sel.innerHTML = "";
+  data.students.forEach((s) => {
+    const o = document.createElement("option");
+    o.value = s.id;
+    o.textContent = s.id;
+    sel.appendChild(o);
+  });
+  sel.value = state.student;
+}
+
+async function loadStudentGraph() {
+  const g = await api(`/api/student/graph?student=${state.student}&offset_days=${state.offsetDays}`);
+  state.lastStudentGraph = g;
+  state.studentNet = renderGraph($("#graph"), state.studentNet, g, {
+    onClick: (params) => {
+      if (params.nodes && params.nodes.length) showConceptDetail(params.nodes[0]);
+    },
+  });
+  renderMemoryContents(g);
+  loadTimeline();
+
+  const bands = { red: 0, amber: 0, green: 0 };
+  let rusty = 0;
+  let total = 0;
+  g.nodes.forEach((n) => {
+    bands[n.band]++;
+    if (n.rusty) rusty++;
+    if (!n.retired) total++;
+  });
+  // mastery % = share of concepts actually mastered (green). A brand-new student
+  // is 0%, matching the "0 mastered" tile; it was previously average raw weight,
+  // so a fresh student (all at the 0.2 baseline) misleadingly showed 20%.
+  const pct = total ? Math.round((bands.green / total) * 100) : 0;
+
+  $("#report-student").textContent = state.student;
+  $("#mastery-label").textContent = `${state.student}'s mastery`;
+  $("#mastery-score").textContent = pct + "%";
+  $("#mastery-fill").style.width = pct + "%";
+  $("#mb-mastered").textContent = bands.green;
+  $("#mb-learning").textContent = bands.amber;
+  $("#mb-gaps").textContent = bands.red;
+  $("#mb-rusty").textContent = rusty;
+
+  const next = g.next_step ? g.nodes.find((n) => n.id === g.next_step) : null;
+  const why = g.why_next;
+  if (next && why) {
+    const chain = why.graph_chain && why.graph_chain.length
+      ? why.graph_chain.join(" -> ")
+      : next.name;
+    const prereqs = why.prerequisites && why.prerequisites.length
+      ? why.prerequisites.map((p) =>
+          `${p.name}: ${(p.weight * 100).toFixed(0)}% ${p.ready ? "ready" : "blocked"}`
+        ).join("\n")
+      : "no prerequisites: start here";
+    $("#next-step").textContent =
+      `${next.name}\n${next.summary}\n\nwhy this next:\n${why.rule}\n\nchain:\n${chain}\n\nprerequisites:\n${prereqs}`;
+  } else {
+    $("#next-step").textContent = "all frontier concepts mastered.";
+  }
+  $("#clock-label").textContent = state.offsetDays ? `+${state.offsetDays}d` : "today";
+
+  // teacher-assigned reviews, with the graph explaining what unlocks them
+  const card = $("#assignment-card");
+  const assignments = g.assignments || [];
+  if (assignments.length) {
+    $("#assignment-list").textContent = assignments.map((a) =>
+      a.unlocked
+        ? `${a.name}: ready to practice. The quiz will reach it next.`
+        : `${a.name}: locked until you learn ${a.blocked_by.join(" and ")}.`
+    ).join("\n");
+    card.classList.remove("hidden");
+  } else {
+    card.classList.add("hidden");
+  }
+}
+
+/* ---------- quiz ---------- */
+
+async function quizNext() {
+  const q = await api("/api/quiz/next", { method: "POST", body: JSON.stringify({ student: state.student }) });
+  showQuiz(q);
+}
+
+function showQuiz(q) {
+  $("#quiz-feedback").classList.add("hidden");
+  if (q.done) {
+    $("#quiz-concept").textContent = "done";
+    $("#quiz-question").textContent = q.message;
+    $("#quiz-options").innerHTML = "";
+    $("#quiz-start").classList.remove("hidden");
+    return;
+  }
+  state.question = q.question;
+  $("#quiz-concept").textContent = q.concept.name;
+  $("#quiz-question").textContent = q.question.text;
+  const box = $("#quiz-options");
+  box.innerHTML = "";
+  q.question.options.forEach((opt, i) => {
+    const b = document.createElement("button");
+    b.textContent = opt;
+    b.onclick = () => submitAnswer(i, b);
+    box.appendChild(b);
+  });
+}
+
+async function submitAnswer(index, btn) {
+  const res = await api("/api/quiz/answer", {
+    method: "POST",
+    body: JSON.stringify({ student: state.student, concept: state.question.concept, answer_index: index }),
+  });
+  [...$("#quiz-options").children].forEach((b) => (b.disabled = true));
+  btn.classList.add(res.correct ? "correct" : "wrong");
+  const fb = $("#quiz-feedback");
+  fb.classList.remove("hidden", "good", "bad");
+  fb.classList.add(res.correct ? "good" : "bad");
+  const before = (res.weight_before * 100).toFixed(0);
+  const after = (res.weight_after * 100).toFixed(0);
+  fb.textContent = res.correct
+    ? `correct! mastery ${before}% -> ${after}%`
+    : `not quite. answer: "${res.correct_option}". mastery ${before}% -> ${after}%`;
+
+  lifecycle("improve");
+  log(`<b>${res.concept.name}</b> ${res.correct ? "up" : "down"} ${before}% -> ${after}%`,
+    res.correct ? "good" : "bad");
+  if (res.concept.band === "green") {
+    kicker(`${state.student} mastered ${res.concept.name}.`,
+      "A learning trace was written to the cloud dataset with remember().");
+    lifecycle("remember");
+    log(`<b>remember()</b> trace: mastered ${res.concept.name}`, "good");
+  }
+
+  await loadStudentGraph();
+  setTimeout(() => showQuiz(res.next), res.correct ? 900 : 1900);
+}
+
+/* ---------- ask (recall) ---------- */
+
+async function askMemory() {
+  const q = $("#ask-input").value.trim();
+  if (!q) return;
+  const btn = $("#ask-btn");
+  const card = $("#ask-card");
+  btn.disabled = true;
+  card.classList.remove("hidden");
+  $("#ask-source").textContent = "recalling";
+  $("#ask-answer").textContent =
+    "asking your memory... first question per student seeds the Cognee Cloud dataset (about 20s), then it is fast.";
+  lifecycle("recall");
+  try {
+    const a = await api("/api/ask", { method: "POST", body: JSON.stringify({ student: state.student, question: q }) });
+    $("#ask-answer").textContent = a.answer;
+    $("#ask-source").textContent = a.cloud ? "cognee cloud" : "local";
+    log(`<b>recall()</b> "${q.slice(0, 44)}"`, a.cloud ? "good" : "");
+    loadCockpit(); // seeded list may have changed
+  } catch (err) {
+    $("#ask-answer").textContent = "memory unavailable. try again.";
+    $("#ask-source").textContent = "error";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ---------- retire + reset (forget) ---------- */
+
+async function retireMastered() {
+  const g = await api(`/api/student/graph?student=${state.student}&offset_days=0`);
+  const green = g.nodes.filter((n) => n.band === "green" && !n.retired)
+    .sort((a, b) => b.weight - a.weight)[0];
+  if (!green) {
+    kicker("nothing to retire yet.", "Master a concept first, then retire it from active practice.");
+    return;
+  }
+  const r = await api("/api/retire", {
+    method: "POST",
+    body: JSON.stringify({ student: state.student, concept: green.id }),
+  });
+  if (r.ok) {
+    lifecycle("forget");
+    kicker(`${green.name} retired.`, "Mastered and removed from active drilling. That is forget() as a feature.");
+    log(`<b>forget()</b> retired ${green.name}`);
+    loadStudentGraph();
+  }
+}
+
+async function resetStudent() {
+  if (!confirm(`Reset ${state.student}'s memory? This deletes their Cognee Cloud dataset (the transfer student demo).`)) return;
+  await api("/api/reset-student", { method: "POST", body: JSON.stringify({ student: state.student }) });
+  lifecycle("forget");
+  kicker(`${state.student} reset.`, "Real forget(dataset) on the tenant. A brand new memory.");
+  log(`<b>forget(dataset)</b> reset ${state.student}`, "bad");
+  loadStudentGraph();
+  loadCockpit();
+}
+
+/* ---------- teacher ---------- */
+
+async function loadTeacher() {
+  const [hm, plan] = await Promise.all([
+    api(`/api/class/heatmap?offset_days=${state.offsetDays}`),
+    api(`/api/teacher/plan?offset_days=${state.offsetDays}`),
+  ]);
+  state.teacherHeatmap = hm;
+
+  // Teaching Plan: graph-reasoned pedagogy, the hero of the teacher view
+  $("#plan-headline").textContent = plan.headline || "The class has no ready gaps right now.";
+  const tp = $("#teaching-plan");
+  tp.innerHTML = "";
+  plan.plan.forEach((item, i) => {
+    const li = document.createElement("li");
+    li.innerHTML =
+      `<div class="plan-row">` +
+        `<div class="plan-main">` +
+          `<b>${i + 1}. ${escapeHtml(item.name)}</b>` +
+          `<small>${escapeHtml(item.reason)}</small>` +
+          `<span class="plan-tags">` +
+            `<em>${item.ready_count} ready</em>` +
+            (item.blocked_count ? `<em class="blocked">${item.blocked_count} not ready yet</em>` : "") +
+            `<em>unlocks ${item.unlocks}</em>` +
+          `</span>` +
+        `</div>` +
+        `<button class="assign-review" data-concept="${item.concept}">assign</button>` +
+      `</div>`;
+    tp.appendChild(li);
+  });
+  $$(".assign-review").forEach((btn) => {
+    btn.onclick = () => assignReview(btn.dataset.concept);
+  });
+
+  const list = $("#student-list");
+  list.innerHTML = "";
+  hm.students.forEach((s) => {
+    const b = document.createElement("button");
+    if (s.id === state.student) b.classList.add("active");
+    b.innerHTML = `<span class="who">${s.id}</span>` +
+      `<span class="mini">${s.mastered} mastered · ${s.gaps} gaps · ${Math.round(s.mastered / s.total * 100)}% mastered</span>`;
+    b.onclick = () => drillStudent(s.id);
+    list.appendChild(b);
+  });
+
+  if (!state.teacherDrill) {
+    const nodes = hm.concepts.map((c) => ({
+      id: c.id,
+      name: c.name,
+      summary: `class avg ${(c.avg_weight * 100).toFixed(0)}%, ${c.red_pct}% of class red`,
+      requires: c.requires,
+      weight: c.avg_weight,
+      band: bandOf(c.avg_weight),
+      rusty: false,
+      retired: false,
+    }));
+    const edges = [];
+    hm.concepts.forEach((c) => c.requires.forEach((r) => edges.push({ from: r, to: c.id })));
+    state.teacherNet = renderGraph($("#teacher-graph"), state.teacherNet, { nodes, edges });
+    $("#teacher-graph-title").textContent = "class heat map";
+    $("#back-to-class").classList.add("hidden");
+    const worst = hm.concepts[0];
+    $("#t-students").textContent = hm.students.length;
+    $("#t-worst").textContent = worst.name.split(" ")[0];
+    $("#t-red").textContent = worst.red_pct + "%";
+  }
+}
+
+async function assignReview(concept) {
+  const card = $("#intervention-card");
+  card.innerHTML = `<b>Assigning review...</b><span>Creating a targeted list from the class heat map.</span>`;
+  try {
+    const res = await api("/api/teacher/assign-review", {
+      method: "POST",
+      body: JSON.stringify({ concept }),
+    });
+    const students = res.students || [];
+    const list = students.length
+      ? `<ul>${students.map((s) => `<li>${escapeHtml(s.student)} · ${escapeHtml(s.band)} · ${(s.weight * 100).toFixed(0)}%</li>`).join("")}</ul>`
+      : "<span>No red or rusty students for this concept right now.</span>";
+    card.innerHTML = `<b>${escapeHtml(res.message)}</b>` +
+      `<span>Intervention ${res.intervention ? "#" + res.intervention.id : "created"} · ${escapeHtml(res.concept_name)}</span>` +
+      `<span>${escapeHtml(res.why || "Heat-map signal converted into a review list.")}</span>${list}`;
+    if (res.assigned_count > 0) {
+      $("#class-ask-input").value = `why is ${res.concept_name} the next review?`;
+    }
+  } catch (err) {
+    card.innerHTML = `<b>Could not assign review.</b><span>${escapeHtml(err.message)}</span>`;
+  }
+}
+
+function bandOf(w) {
+  if (w < 0.35) return "red";
+  if (w > 0.75) return "green";
+  return "amber";
+}
+
+async function drillStudent(sid) {
+  state.teacherDrill = sid;
+  const g = await api(`/api/student/graph?student=${sid}&offset_days=${state.offsetDays}`);
+  state.teacherNet = renderGraph($("#teacher-graph"), state.teacherNet, g);
+  $("#teacher-graph-title").textContent = `${sid} · mastery graph`;
+  $("#back-to-class").classList.remove("hidden");
+  const gaps = g.nodes.filter((n) => n.band === "red").length;
+  const greens = g.nodes.filter((n) => n.band === "green").length;
+  $("#t-students").textContent = sid;
+  $("#t-worst").textContent = `${gaps} gaps`;
+  $("#t-red").textContent = `${greens} done`;
+}
+
+/* ---------- views ---------- */
+
+function setView(view, opts = {}) {
+  const { scrollTop = true, syncHash = true } = opts;
+  if (!$(`#${view}-view`)) view = "app";
+  state.view = view;
+  $$(".view").forEach((v) => v.classList.remove("active"));
+  $(`#${view}-view`).classList.add("active");
+  $$(".navlinks a").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
+  if (syncHash) {
+    const nextHash = view === "app" ? "#app" : `#${view}`;
+    if (location.hash !== nextHash) history.replaceState(null, "", nextHash);
+  }
+  if (scrollTop) window.scrollTo({ top: 0 });
+  if (view === "teacher") { state.teacherDrill = null; loadTeacher(); }
+  if (view === "app") loadStudentGraph();
+  fitVisibleGraphs();
+}
+
+function routeFromHash() {
+  setView(viewFromHash(), { scrollTop: true, syncHash: false });
+}
+
+function wireViewLinks() {
+  $$("[data-view]").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      setView(el.dataset.view);
+    });
+  });
+}
+
+function maximizePanels() {
+  return {
+    workbench: $(".case-column"),
+    graph: $(".graph-column"),
+    report: $(".report-column"),
+  };
+}
+
+function toggleMaximize(panelName) {
+  const wb = $("#workbench");
+  const carousel = $(".carousel-nav");
+  if (!wb || !carousel) return;
+  const panels = maximizePanels();
+  const names = Object.keys(panels);
+  const triggers = $$(".maximize-trigger");
+
+  if (activeMaximized === panelName) {
+    wb.classList.remove("maximized-mode");
+    names.forEach((name) => {
+      panels[name]?.classList.remove("maximized", "hidden-slide");
+    });
+    activeMaximized = null;
+    carousel.classList.remove("visible");
+  } else {
+    wb.classList.add("maximized-mode");
+    names.forEach((name) => {
+      panels[name]?.classList.toggle("maximized", name === panelName);
+      panels[name]?.classList.toggle("hidden-slide", name !== panelName);
+    });
+    activeMaximized = panelName;
+    carousel.classList.add("visible");
+  }
+
+  const activeIndex = names.indexOf(activeMaximized || "workbench");
+  $$(".carousel-tab").forEach((tab, i) => tab.classList.toggle("active", i === activeIndex));
+  triggers.forEach((btn) => {
+    const active = btn.dataset.panel === activeMaximized;
+    btn.innerHTML = `<i data-lucide="${active ? "minimize-2" : "maximize-2"}"></i>`;
+    btn.title = active ? "Restore grid" : `Maximize ${btn.dataset.panel}`;
+  });
+  icons();
+  setTimeout(fitVisibleGraphs, 80);
+}
+
+function updateSlide(delta) {
+  const names = Object.keys(maximizePanels());
+  const current = names.indexOf(activeMaximized || "workbench");
+  toggleMaximize(names[(current + delta + names.length) % names.length]);
+}
+
+function initCarousel() {
+  $$(".maximize-trigger").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleMaximize(btn.dataset.panel);
+    });
+  });
+  $$(".carousel-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const names = Object.keys(maximizePanels());
+      const target = names[Number(tab.dataset.slide || 0)];
+      if (activeMaximized !== target) toggleMaximize(target);
+    });
+  });
+  $("#slide-prev")?.addEventListener("click", () => updateSlide(-1));
+  $("#slide-next")?.addEventListener("click", () => updateSlide(1));
+  document.addEventListener("keydown", (e) => {
+    if (!activeMaximized || ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) return;
+    if (e.key === "ArrowLeft") updateSlide(-1);
+    if (e.key === "ArrowRight") updateSlide(1);
+    if (e.key === "Escape") toggleMaximize(activeMaximized);
+  });
+}
+
+/* ---------- init ---------- */
+
+async function init() {
+  wireViewLinks();
+  window.addEventListener("hashchange", routeFromHash);
+
+  try {
+    await loadCockpit();
+  } catch (err) {
+    $("#mode-badge").textContent = "backend offline";
+    console.error(err);
+    return;
+  }
+  await loadStudents();
+  await loadStudentGraph();
+  initCarousel();
+  routeFromHash();
+
+  safely("core", () => {
+    $("#refresh-cockpit").onclick = loadCockpit;
+
+    $("#hero-start").onclick = () => {
+      $("#workbench").scrollIntoView({ behavior: "smooth" });
+      $("#quiz-start").click();
+    };
+
+    $("#student-select").onchange = (e) => {
+      state.student = e.target.value;
+      $("#quiz-start").classList.remove("hidden");
+      $("#quiz-concept").textContent = "press start to begin";
+      $("#quiz-question").textContent = "";
+      $("#quiz-options").innerHTML = "";
+      $("#quiz-feedback").classList.add("hidden");
+      loadStudentGraph();
+    };
+
+    $("#quiz-start").onclick = () => {
+      $("#quiz-start").classList.add("hidden");
+      quizNext();
+    };
+
+    $("#ask-btn").onclick = askMemory;
+    $("#ask-input").addEventListener("keydown", (e) => { if (e.key === "Enter") askMemory(); });
+
+    $("#retire-btn").onclick = retireMastered;
+    $("#reset-btn").onclick = resetStudent;
+    $("#node-detail-close").onclick = () => $("#node-detail-card").classList.add("hidden");
+    $("#report-btn").onclick = generateReport;
+    $("#report-close").onclick = () => $("#report-modal").classList.add("hidden");
+    $("#report-modal").addEventListener("click", (e) => {
+      if (e.target === $("#report-modal")) $("#report-modal").classList.add("hidden");
+    });
+  });
+
+  safely("lifecycle-strip", () => {
+    Object.keys(LIFECYCLE_EXPLAIN).forEach((step) => {
+      const el = $(`#life-${step}`);
+      if (!el) return;
+      el.onclick = () => {
+        const [title, text] = LIFECYCLE_EXPLAIN[step];
+        lifecycle(step);
+        kicker(title + ".", text);
+        log(`<b>${title}</b> explained`, "");
+      };
+    });
+    // "today" tab: one click back to the present
+    $("#clock-label").onclick = () => {
+      if (!state.offsetDays) return;
+      state.offsetDays = 0;
+      const span = $("#decay-btn").querySelector("span");
+      if (span) span.textContent = "age +30d";
+      kicker("back to today.", "Decay view reset.");
+      if (state.view === "teacher") { state.teacherDrill = null; loadTeacher(); }
+      else loadStudentGraph();
+    };
+    $("#clock-label").style.cursor = "pointer";
+    $("#clock-label").title = "click to return to today";
+  });
+
+  const openEnroll = () => {
+    $("#enroll-error").classList.add("hidden");
+    $("#enroll-error").textContent = "";
+    $("#enroll-name").value = "";
+    $("#enroll-modal").classList.remove("hidden");
+    icons();
+    setTimeout(() => $("#enroll-name").focus(), 40);
+  };
+
+  const closeEnroll = () => $("#enroll-modal").classList.add("hidden");
+
+  const enrollStudent = async (name) => {
+    if (!name) return;
+    const r = await api("/api/student/add", {
+      method: "POST", body: JSON.stringify({ student: name }),
+    });
+    if (!r.ok) {
+      $("#enroll-error").textContent = r.reason || "Could not enroll that student.";
+      $("#enroll-error").classList.remove("hidden");
+      return;
+    }
+    closeEnroll();
+    state.student = r.student;
+    await loadStudents();
+    await loadCockpit();
+    setView("app");
+    $("#student-select").value = r.student;
+    await loadStudentGraph();
+    kicker(`welcome, ${r.student}.`,
+      "A brand new memory. The first question creates their Cognee Cloud dataset.");
+    log(`<b>enrolled</b> ${r.student}`, "good");
+    $("#workbench").scrollIntoView({ behavior: "smooth" });
+  };
+  safely("enroll", () => {
+    $("#enroll-btn").onclick = openEnroll;
+    $("#enroll-btn2").onclick = openEnroll;
+    $("#enroll-close").onclick = closeEnroll;
+    $("#enroll-modal").addEventListener("click", (e) => {
+      if (e.target === $("#enroll-modal")) closeEnroll();
+    });
+    $("#enroll-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      enrollStudent($("#enroll-name").value.trim());
+    });
+  });
+
+  const sampleCurriculum = {
+    domain: "ai-literacy",
+    title: "AI literacy fundamentals",
+    concepts: [
+      {
+        id: "prompts",
+        name: "Prompts",
+        summary: "Clear instructions, context, examples, and constraints for an AI model.",
+        requires: [],
+        questions: [
+          {
+            q: "Which prompt is easiest for a model to follow?",
+            options: ["Do it", "Summarize this in 3 bullet points for a teacher", "Help", "Make it nice"],
+            answer: 1,
+          },
+        ],
+      },
+      {
+        id: "hallucinations",
+        name: "Hallucinations",
+        summary: "Confident model outputs that are not grounded in reliable evidence.",
+        requires: ["prompts"],
+        questions: [
+          {
+            q: "What should you do with a surprising factual AI answer?",
+            options: ["Trust it immediately", "Verify it against a source", "Delete the prompt", "Ask shorter questions"],
+            answer: 1,
+          },
+        ],
+      },
+      {
+        id: "retrieval",
+        name: "Retrieval",
+        summary: "Supplying relevant external context so the model can answer from evidence.",
+        requires: ["hallucinations"],
+        questions: [
+          {
+            q: "Why does retrieval help?",
+            options: ["It adds grounded context", "It removes all tokens", "It turns AI off", "It only changes fonts"],
+            answer: 0,
+          },
+        ],
+      },
+    ],
+  };
+
+  const openCurriculum = () => {
+    $("#curriculum-error").classList.add("hidden");
+    $("#curriculum-error").textContent = "";
+    $("#curriculum-json").value = JSON.stringify(sampleCurriculum, null, 2);
+    $("#curriculum-modal").classList.remove("hidden");
+    icons();
+    setTimeout(() => $("#curriculum-json").focus(), 40);
+  };
+  const closeCurriculum = () => $("#curriculum-modal").classList.add("hidden");
+  safely("curriculum-modal", () => {
+    $("#curriculum-btn").onclick = openCurriculum;
+    $("#curriculum-close").onclick = closeCurriculum;
+    $("#curriculum-sample").onclick = () => {
+      $("#curriculum-json").value = JSON.stringify(sampleCurriculum, null, 2);
+    };
+    $("#curriculum-modal").addEventListener("click", (e) => {
+      if (e.target === $("#curriculum-modal")) closeCurriculum();
+    });
+  });
+  $("#curriculum-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("#curriculum-error").classList.add("hidden");
+    let payload;
+    try {
+      payload = JSON.parse($("#curriculum-json").value);
+    } catch (err) {
+      $("#curriculum-error").textContent = "Invalid JSON.";
+      $("#curriculum-error").classList.remove("hidden");
+      return;
+    }
+    try {
+      const res = await api("/api/curriculum/import", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      closeCurriculum();
+      state.student = "alice";
+      state.studentNet = null;
+      state.teacherNet = null;
+      state.teacherDrill = null;
+      await loadCockpit();
+      await loadStudents();
+      await loadStudentGraph();
+      if (state.view === "teacher") await loadTeacher();
+      kicker(`${res.title} imported.`, `${res.concepts} concepts are now live. Same app, new subject.`);
+      log(`<b>curriculum imported</b> ${escapeHtml(res.domain)}`, "good");
+    } catch (err) {
+      $("#curriculum-error").textContent = err.message || "Import failed.";
+      $("#curriculum-error").classList.remove("hidden");
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (!$("#enroll-modal").classList.contains("hidden")) closeEnroll();
+    if (!$("#curriculum-modal").classList.contains("hidden")) closeCurriculum();
+  });
+
+  safely("decay+teacher", () => {
+    $("#decay-btn").onclick = () => {
+      state.offsetDays = (state.offsetDays + 30) % 120;
+      const label = state.offsetDays ? `+${state.offsetDays}d` : "age +30d";
+      $("#decay-btn").querySelector("span").textContent = state.offsetDays ? `viewing ${label}` : label;
+      if (state.offsetDays) {
+        kicker("memory rots.", `Viewing the graphs as if ${state.offsetDays} days passed. Untouched knowledge goes rusty.`);
+      } else {
+        kicker("back to today.", "Decay view reset.");
+      }
+      if (state.view === "teacher") { state.teacherDrill = null; loadTeacher(); }
+      else loadStudentGraph();
+    };
+
+    $("#back-to-class").onclick = () => { state.teacherDrill = null; loadTeacher(); };
+  });
+
+  const classAsk = async () => {
+    const q = $("#class-ask-input").value.trim();
+    if (!q) return;
+    const btn = $("#class-ask-btn");
+    const card = $("#class-ask-card");
+    btn.disabled = true;
+    card.classList.remove("hidden");
+    $("#class-ask-source").textContent = "recalling";
+    $("#class-ask-answer").textContent =
+      "one recall() across every student's dataset... unseeded students are seeded first (about 20s each), then it is fast.";
+    try {
+      const a = await api("/api/class/ask", { method: "POST", body: JSON.stringify({ question: q }) });
+      if (a.per_student && a.per_student.length) {
+        $("#class-ask-answer").innerHTML = renderClassRecall(a.per_student
+          .map((p) => `**${p.student}** - ${p.text}`).join("\n"));
+      } else {
+        $("#class-ask-answer").innerHTML = renderClassRecall(a.answer);
+      }
+      $("#class-ask-source").textContent = a.cloud ? "cognee cloud" : "local";
+    } catch (err) {
+      $("#class-ask-answer").textContent = "class memory unavailable. try again.";
+      $("#class-ask-source").textContent = "error";
+    } finally {
+      btn.disabled = false;
+    }
+  };
+  safely("class-ask", () => {
+    $("#class-ask-btn").onclick = classAsk;
+    $("#class-ask-input").addEventListener("keydown", (e) => { if (e.key === "Enter") classAsk(); });
+  });
+
+  safely("class-setup", () => {
+    const modal = $("#class-setup-modal");
+    const open = () => {
+      $("#class-setup-error").classList.add("hidden");
+      modal.classList.remove("hidden");
+      icons();
+      setTimeout(() => $("#class-setup-names").focus(), 40);
+    };
+    const close = () => modal.classList.add("hidden");
+    $("#class-setup-btn").onclick = open;
+    $("#class-setup-close").onclick = close;
+    modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+    $("#class-setup-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const names = $("#class-setup-names").value
+        .split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+      if (!names.length) return;
+      const res = await api("/api/class/setup", {
+        method: "POST", body: JSON.stringify({ students: names }),
+      });
+      if (res.rejected && res.rejected.length) {
+        $("#class-setup-error").textContent =
+          "not enrolled: " + res.rejected.map((r) => `${r.name} (${r.reason})`).join("; ");
+        $("#class-setup-error").classList.remove("hidden");
+      } else {
+        close();
+      }
+      await loadStudents();
+      await loadCockpit();
+      if (state.view === "teacher") { state.teacherDrill = null; await loadTeacher(); }
+      kicker(`class of ${res.class_size}.`,
+        `${res.added.length} enrolled${res.kept.length ? `, ${res.kept.length} already existed` : ""}. Each is an isolated classroom memory.`);
+      log(`<b>class setup</b> +${res.added.length} students`, "good");
+    });
+  });
+
+  safely("chrome", () => {
+    $("#theme-toggle").onclick = () => {
+      document.body.classList.toggle("light");
+      const icon = document.body.classList.contains("light") ? "sun" : "moon";
+      $("#theme-toggle").innerHTML = `<i data-lucide="${icon}"></i>`;
+      icons();
+    };
+
+    $("#footer-copy-command").onclick = () => {
+      navigator.clipboard.writeText("python backend/verify_cloud.py");
+      kicker("command copied.", "Run it to prove the cloud lifecycle end to end.");
+    };
+  });
+
+  icons();
+}
+
+init();
+
+function renderClassRecall(text) {
+  const groups = [];
+  let current = null;
+
+  String(text || "").split(/\r?\n/).forEach((raw) => {
+    const line = raw.trim();
+    if (!line) return;
+
+    const heading = line.match(/^\*\*(.+?)\*\*:?$/);
+    if (heading && !current) {
+      groups.push({ type: "heading", title: heading[1], body: "" });
+      return;
+    }
+
+    const bullet = line.match(/^[-*]\s+(.*)$/);
+    const content = bullet ? bullet[1].trim() : line;
+    const student = content.match(/^\*\*(.+?)\*\*\s*[-:]\s*(.*)$/);
+
+    if (student) {
+      current = { type: "student", title: student[1], body: student[2] };
+      groups.push(current);
+      return;
+    }
+
+    if (bullet) {
+      groups.push({ type: "bullet", title: "", body: content });
+      current = null;
+      return;
+    }
+
+    if (current) current.body += (current.body ? " " : "") + content;
+    else groups.push({ type: "paragraph", title: "", body: content });
+  });
+
+  if (!groups.length) return `<div class="recall-empty">No class memory answer returned yet.</div>`;
+
+  return groups.map((item) => {
+    if (item.type === "heading") return `<div class="recall-heading">${inlineFormat(item.title)}</div>`;
+    if (item.type === "student") {
+      return `<article class="recall-student"><h4>${escapeHtml(item.title)}</h4><p>${inlineFormat(item.body)}</p></article>`;
+    }
+    if (item.type === "bullet") return `<article class="recall-note">${inlineFormat(item.body)}</article>`;
+    return `<p class="recall-paragraph">${inlineFormat(item.body)}</p>`;
+  }).join("");
+}
+
+function inlineFormat(value) {
+  return escapeHtml(value)
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  }[ch]));
+}

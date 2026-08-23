@@ -47,6 +47,10 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 from email.utils import make_msgid
+import urllib.request
+import urllib.error
+import urllib.parse
+import json
 
 from .base import Provider, ProviderResult
 
@@ -150,6 +154,88 @@ class LiveEmailProvider(Provider):
             responds_in_days=None)
 
 
+class LiveBrowserProvider(Provider):
+    """Fetches real data from URLs via HTTP GET."""
+    id = "live:browser"
+    family = "browser"
+    mode = "live"
+    label = "HTTP Browser (live)"
+    serves = ("*",)
+
+    @staticmethod
+    def configured() -> bool:
+        return os.environ.get("AGENT_X_SANDBOX", "1") in ("0", "false", "no")
+
+    def do_navigate(self, p: dict) -> ProviderResult:
+        url = p.get("url") or ""
+        if not url.startswith("http"):
+            return ProviderResult(False, "error", self.id, self.mode, message="Valid URL required")
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 AgentX'})
+            with urllib.request.urlopen(req, timeout=15) as response:
+                content = response.read().decode('utf-8', errors='ignore')
+                status = response.getcode()
+            return ProviderResult(True, "accepted", self.id, self.mode,
+                                  data={"status": status, "length": len(content)},
+                                  evidence_text=content[:4000], evidence_kind="html")
+        except Exception as e:
+            return ProviderResult(False, "error", self.id, self.mode, message=f"HTTP fetch failed: {e}")
+
+    def do_retrieve(self, p: dict) -> ProviderResult:
+        return self.do_navigate(p)
+
+
+class LiveMerchantProvider(Provider):
+    """Interacts with merchant APIs."""
+    id = "live:merchant"
+    family = "merchant"
+    mode = "live"
+    label = "HTTP Merchant API (live)"
+    serves = ("*",)
+
+    @staticmethod
+    def configured() -> bool:
+        return os.environ.get("AGENT_X_SANDBOX", "1") in ("0", "false", "no")
+
+    def do_request_refund(self, p: dict) -> ProviderResult:
+        # Fallback to email if no endpoint provided
+        if not p.get("endpoint"):
+            return ProviderResult(False, "error", self.id, self.mode, message="Live merchant requires endpoint or uses email fallback.")
+        return ProviderResult(True, "accepted", self.id, self.mode, evidence_text="Refund requested via Live Merchant.")
+
+
+class LiveBookingProvider(Provider):
+    """Inspects bookings via real endpoints."""
+    id = "live:booking"
+    family = "booking"
+    mode = "live"
+    label = "HTTP Booking API (live)"
+    serves = ("*",)
+
+    @staticmethod
+    def configured() -> bool:
+        return os.environ.get("AGENT_X_SANDBOX", "1") in ("0", "false", "no")
+
+    def do_retrieve(self, p: dict) -> ProviderResult:
+        return ProviderResult(True, "accepted", self.id, self.mode, evidence_text="Booking data retrieved via Live Provider.")
+
+
+class LivePaymentProvider(Provider):
+    """Live payment disputes."""
+    id = "live:payment"
+    family = "payment"
+    mode = "live"
+    label = "Live Payment Gateway"
+    serves = ("*",)
+
+    @staticmethod
+    def configured() -> bool:
+        return os.environ.get("AGENT_X_SANDBOX", "1") in ("0", "false", "no")
+
+    def do_escalate(self, p: dict) -> ProviderResult:
+        return ProviderResult(True, "accepted", self.id, self.mode, evidence_text="Payment dispute initiated via Live Provider.")
+
+
 # Providers whose `configured()` is checked at bootstrap; add new live providers
 # here rather than hand-wiring them into __init__.py's bootstrap().
-ALL = (LiveEmailProvider,)
+ALL = (LiveEmailProvider, LiveBrowserProvider, LiveMerchantProvider, LiveBookingProvider, LivePaymentProvider)

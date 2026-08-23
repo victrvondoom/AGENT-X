@@ -261,3 +261,72 @@ class TestReviewGate:
         review.decide(conn, job, f["id"], "ACCEPT", "a")
         with pytest.raises(review.ReviewError):
             review.decide(conn, job, f["id"], "ACCEPT", "b")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Key material: configured-but-broken must never fall through to a different key
+#
+# This shipped as a real hole. `AGENT_X_SIGNING_KEY` set to a malformed value
+# had its exception swallowed, and Agent X signed with a per-host key instead.
+# Every receipt then failed verification against the key the operator had
+# published, and nothing anywhere said why. The same shape applied to
+# `AGENT_X_ROOT_KEY`, where the consequence is worse: it wraps every
+# per-subject data key, so falling back silently makes stored records
+# undecryptable by the deployment that set it.
+#
+# Absent is a different question from broken and still falls back — that is the
+# documented out-of-the-box path on the local engine.
+# ═══════════════════════════════════════════════════════════════════════════
+import base64 as _b64
+
+import pytest as _pytest
+
+
+@_pytest.fixture
+def _local_engine(tmp_path, monkeypatch):
+    from agentx import store as _store
+    monkeypatch.delenv("AGENT_X_ROOT_KEY", raising=False)
+    monkeypatch.delenv("AGENT_X_SIGNING_KEY", raising=False)
+    _store.reset_for_tests(str(tmp_path / "keys.db"))
+    yield
+
+
+def test_malformed_signing_key_refuses_rather_than_swapping_identity(
+        _local_engine, monkeypatch):
+    from agentx import sealing
+    monkeypatch.setenv("AGENT_X_SIGNING_KEY", "not-a-real-key!!")
+    with _pytest.raises(RuntimeError) as e:
+        sealing.signing_key()
+    assert "AGENT_X_SIGNING_KEY" in str(e.value)
+
+
+def test_malformed_root_key_refuses(_local_engine, monkeypatch):
+    from agentx import sealing
+    monkeypatch.setenv("AGENT_X_ROOT_KEY", "%%%not-base64%%%")
+    with _pytest.raises(RuntimeError) as e:
+        sealing._root_key()
+    assert "AGENT_X_ROOT_KEY" in str(e.value)
+
+
+def test_wrong_length_root_key_refuses(_local_engine, monkeypatch):
+    """A 8-byte key is valid base64 and useless as AES material."""
+    from agentx import sealing
+    monkeypatch.setenv("AGENT_X_ROOT_KEY", _b64.b64encode(b"tooshort").decode())
+    with _pytest.raises(RuntimeError) as e:
+        sealing._root_key()
+    assert "bytes" in str(e.value)
+
+
+def test_a_valid_root_key_is_used(_local_engine, monkeypatch):
+    from agentx import sealing
+    key = b"\x11" * 32
+    monkeypatch.setenv("AGENT_X_ROOT_KEY", _b64.b64encode(key).decode())
+    assert sealing._root_key() == key
+
+
+def test_absent_keys_still_fall_back_on_the_local_engine(_local_engine):
+    """The refusal must apply to BROKEN configuration, not to no configuration —
+    otherwise the product stops running out of the box."""
+    from agentx import sealing
+    assert len(sealing._root_key()) in (16, 24, 32)
+    assert sealing.signing_key() is not None
