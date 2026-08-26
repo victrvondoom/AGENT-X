@@ -610,7 +610,8 @@ def llm_refine(text: str, hyps: list[Hypothesis], timeout_ok: bool = True) -> tu
     try:
         from llm import client
         got = client.chat_json(_LLM_SYSTEM,
-                               f"Candidates:\n{menu}\n\nComplaint:\n{text.strip()[:1500]}")
+                               f"Candidates:\n{menu}\n\nComplaint:\n{text.strip()[:1500]}",
+                               task="classify")
     except Exception as e:
         return hyps, f"model unavailable ({type(e).__name__}); deterministic scoring stands"
 

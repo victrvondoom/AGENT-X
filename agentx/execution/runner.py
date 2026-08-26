@@ -37,6 +37,8 @@ from agentx import chain, ids, governor, normalize, store
 from agentx.evidence import graph as egraph
 from agentx.execution import actions as A
 from agentx.execution import providers
+from agentx.execution import retry as R
+from agentx.execution.providers.base import ErrorCode, ProviderResult
 
 
 class NotAuthorized(RuntimeError):
@@ -69,6 +71,31 @@ def _advance(conn, execution_id: str, **fields) -> None:
     with conn.cursor() as cur:
         cur.execute(f"UPDATE executions SET {sets} WHERE id = %s",
                     (*fields.values(), execution_id))
+
+
+def _prior_execution(conn, step_id: str) -> dict | None:
+    cols = ["id", "state", "provider", "provider_mode", "result", "external_ref",
+            "evidence_id", "verified", "error"]
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, state, provider, provider_mode, result, external_ref,"
+            " evidence_id, verified, error FROM executions"
+            " WHERE step_id = %s ORDER BY requested_at DESC LIMIT 1", (step_id,))
+        row = cur.fetchone()
+    return dict(zip(cols, row)) if row else None
+
+
+def _replay(prior: dict) -> dict:
+    """Reconstruct run()'s normal success return shape from a completed prior
+    execution, so a caller cannot tell an idempotent replay from a fresh run."""
+    payload = store.jload(prior["result"], {}) or {}
+    return {"id": prior["id"], "state": prior["state"],
+            "outcome": payload.get("outcome"), "external_ref": prior["external_ref"],
+            "evidence_id": prior["evidence_id"], "message": payload.get("message"),
+            "data": payload.get("data", {}),
+            "responds_in_days": payload.get("responds_in_days"),
+            "provider_mode": prior["provider_mode"], "verified": prior["verified"],
+            "replayed": True}
 
 
 def _redact(params: dict) -> dict:
@@ -193,6 +220,38 @@ def run(conn, *, case: dict, action: str, params: dict,
         raise ValueError(f"unknown action {action!r}; the vocabulary is {sorted(A.ACTIONS)}")
 
     case_id = case["id"]
+
+    # 0. idempotency. A crash between the provider call succeeding and the plan
+    # step being marked DONE (engine._finish_step, called only after run()
+    # returns) would otherwise mean the NEXT advance() sees the same PENDING step
+    # and executes it again — a second refund request, a second cancellation, a
+    # second email. Checked before anything else so a replay costs nothing extra:
+    # no governor re-assessment, no new authorisation, no second provider call.
+    if step_id:
+        prior = _prior_execution(conn, step_id)
+        if prior and prior["state"] == "COMPLETED":
+            chain.append(conn, case_id, "action.replayed", "SYSTEM",
+                         {"action": action, "execution_id": prior["id"],
+                          "reason": "an execution already completed for this step; "
+                                    "returning it rather than repeating the action"})
+            return _replay(prior)
+        if prior and prior["state"] == "STARTED" and A.is_external(action):
+            # The provider call was in flight when something died before COMPLETED
+            # or FAILED was written. Whether the external action happened is
+            # genuinely unknown, and a write action must never be retried blind on
+            # an unknown — only read-only actions (not is_external) are safe to
+            # just attempt again, which is why this branch is scoped to
+            # is_external(action) rather than to any STARTED row.
+            rec = _record(conn, case_id, step_id, action, prior["provider"],
+                          prior["provider_mode"], params, state="FAILED",
+                          error="a previous attempt at this action was interrupted and "
+                                "its outcome is unknown; it must be verified, not "
+                                "retried automatically")
+            chain.append(conn, case_id, "action.uncertain", "SYSTEM",
+                         {"action": action, "prior_execution_id": prior["id"],
+                          "reason": rec["error"]})
+            return {**rec, "error_code": ErrorCode.REQUIRES_USER}
+
     counterparty = params.get("counterparty") or params.get("merchant")
     family = (getattr(capability, "provider_family", None) or spec.family)
     provider = (providers.resolve(family, counterparty=counterparty, action=action)
@@ -263,26 +322,41 @@ def run(conn, *, case: dict, action: str, params: dict,
     _advance(conn, rec["id"], state="STARTED", started_at=ids.now())
     rec["state"] = "STARTED"
 
-    # 5. the call.
+    # 5. the call, retried inline for short, plausibly-transient failures (see
+    # execution/retry.py). A ProviderError is a programming error — an unknown
+    # action, a bad argument — and is deliberately excluded from the retry: it
+    # fails the same way every time, so trying again just delays reporting it.
     if provider is None:
-        result = providers.ProviderResult(True, "done", "internal", "internal",
-                                          message=f"{action} completed inside Agent X.")
+        result, attempt_log = providers.ProviderResult(
+            True, "done", "internal", "internal",
+            message=f"{action} completed inside Agent X."), []
     else:
+        def _call() -> ProviderResult:
+            try:
+                return provider.bind(conn).execute(action, params)
+            except providers.ProviderError:
+                raise
+            except TimeoutError as e:
+                return ProviderResult(
+                    False, "error", provider.id, provider.mode,
+                    message="The request to the provider timed out.",
+                    technical_detail=f"{type(e).__name__}: {e}",
+                    error_code=ErrorCode.TIMEOUT, retryable=True)
+            except Exception as e:                          # provider blew up
+                return ProviderResult(
+                    False, "error", provider.id, provider.mode,
+                    message="The provider raised an unexpected error.",
+                    technical_detail=f"{type(e).__name__}: {e}",
+                    error_code=ErrorCode.UNKNOWN_FAILURE, retryable=True)
+
         try:
-            result = provider.bind(conn).execute(action, params)
+            result, _attempts, attempt_log = R.call_with_retry(_call)
         except providers.ProviderError as e:
             _advance(conn, rec["id"], state="FAILED", error=str(e)[:400],
                      finished_at=ids.now())
             chain.append(conn, case_id, "action.failed", "SYSTEM",
                          {"action": action, "reason": str(e)[:300]})
             return {**rec, "state": "FAILED", "error": str(e)[:400]}
-        except Exception as e:                              # provider blew up
-            msg = f"{type(e).__name__}: {e}"
-            _advance(conn, rec["id"], state="FAILED", error=msg[:400],
-                     finished_at=ids.now())
-            chain.append(conn, case_id, "action.failed", "SYSTEM",
-                         {"action": action, "reason": msg[:300]})
-            return {**rec, "state": "FAILED", "error": msg[:400]}
 
     # 6. capture what came back, as evidence with its own hash.
     evidence_id = None
@@ -300,7 +374,10 @@ def run(conn, *, case: dict, action: str, params: dict,
     state = "COMPLETED" if result.ok else "FAILED"
     if result.outcome == "refused":
         state = "COMPLETED"          # the call worked; the answer was no
-    _advance(conn, rec["id"], state=state, result=store.jdump(result.as_dict()),
+    stored = result.as_dict()
+    if attempt_log:
+        stored["attempts"] = attempt_log
+    _advance(conn, rec["id"], state=state, result=store.jdump(stored),
              external_ref=result.external_ref, evidence_id=evidence_id,
              error=None if result.ok else result.message[:400],
              finished_at=ids.now())
@@ -310,6 +387,8 @@ def run(conn, *, case: dict, action: str, params: dict,
                   "provider_mode": result.mode, "outcome": result.outcome,
                   "external_ref": result.external_ref,
                   "message": result.message,
+                  "error_code": result.error_code,
+                  "attempts": len(attempt_log) or 1,
                   "evidence_id": evidence_id,
                   "verified": "unverified",
                   "responds_in_days": result.responds_in_days},
@@ -319,6 +398,8 @@ def run(conn, *, case: dict, action: str, params: dict,
     return {**rec, "state": state, "outcome": result.outcome,
             "external_ref": result.external_ref, "evidence_id": evidence_id,
             "message": result.message, "data": result.data,
+            "error_code": result.error_code, "retry_after": result.retry_after,
+            "attempts": len(attempt_log) or 1,
             "responds_in_days": result.responds_in_days,
             "provider_mode": result.mode, "verified": "unverified"}
 

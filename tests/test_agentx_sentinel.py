@@ -55,6 +55,12 @@ def open_case(conn, *, autonomy=2, confidence=None, state=None):
     return case_id
 
 
+def get_case(conn, case_id: str) -> dict:
+    case = case_mod.get(conn, case_id)
+    assert case is not None, f"case {case_id} should exist — it was just created"
+    return case
+
+
 # ─────────────────────────────────────────────────────── detection
 def test_a_fresh_case_is_not_stuck(conn):
     open_case(conn)
@@ -63,7 +69,7 @@ def test_a_fresh_case_is_not_stuck(conn):
 
 def test_a_long_silent_case_is_detected(conn):
     case_id = open_case(conn, state="INVESTIGATING")
-    stalls = sentinel.inspect(conn, case_mod.get(conn, case_id), as_of=later(30))
+    stalls = sentinel.inspect(conn, get_case(conn, case_id), as_of=later(30))
     assert any(s.kind == "case_stalled" for s in stalls)
 
 
@@ -71,20 +77,20 @@ def test_a_case_is_not_stuck_just_below_the_threshold(conn):
     """The threshold is declared so it can be argued with; it must also hold."""
     case_id = open_case(conn, state="INVESTIGATING")
     days = int(sentinel.STALE_PLAN_DAYS) - 1
-    stalls = sentinel.inspect(conn, case_mod.get(conn, case_id), as_of=later(days))
+    stalls = sentinel.inspect(conn, get_case(conn, case_id), as_of=later(days))
     assert not any(s.kind == "case_stalled" for s in stalls)
 
 
 def test_a_closed_case_is_never_reported_as_stuck(conn):
     case_id = open_case(conn)
     case_mod.transition(conn, case_id, "WITHDRAWN", why="test")
-    stalls = sentinel.inspect(conn, case_mod.get(conn, case_id), as_of=later(400))
+    stalls = sentinel.inspect(conn, get_case(conn, case_id), as_of=later(400))
     assert [s for s in stalls if s.kind != "chain_broken"] == []
 
 
 def test_detection_is_deterministic(conn):
     case_id = open_case(conn, state="INVESTIGATING")
-    case = case_mod.get(conn, case_id)
+    case = get_case(conn, case_id)
     first = [s.kind for s in sentinel.inspect(conn, case, as_of=later(30))]
     for _ in range(3):
         assert [s.kind for s in sentinel.inspect(conn, case, as_of=later(30))] == first
@@ -92,7 +98,7 @@ def test_detection_is_deterministic(conn):
 
 def test_every_stall_names_a_declared_remediation(conn):
     case_id = open_case(conn, state="INVESTIGATING")
-    for stall in sentinel.inspect(conn, case_mod.get(conn, case_id), as_of=later(30)):
+    for stall in sentinel.inspect(conn, get_case(conn, case_id), as_of=later(30)):
         assert stall.remediation in sentinel.REMEDIATIONS
         assert stall.severity in sentinel._SEVERITY_ORDER
         assert stall.detail.strip()
@@ -104,7 +110,7 @@ def test_a_tampered_chain_is_critical(conn):
     with conn.cursor() as cur:
         cur.execute("UPDATE case_chain SET detail = %s WHERE case_id = %s AND seq = 1",
                     ('{"tampered":true}', case_id))
-    stalls = sentinel.inspect(conn, case_mod.get(conn, case_id))
+    stalls = sentinel.inspect(conn, get_case(conn, case_id))
     broken = [s for s in stalls if s.kind == "chain_broken"]
     assert broken and broken[0].severity == sentinel.CRITICAL
 
@@ -116,7 +122,7 @@ def test_a_broken_chain_is_never_auto_repaired(conn):
     with conn.cursor() as cur:
         cur.execute("UPDATE case_chain SET detail = %s WHERE case_id = %s AND seq = 1",
                     ('{"tampered":true}', case_id))
-    broken = next(s for s in sentinel.inspect(conn, case_mod.get(conn, case_id))
+    broken = next(s for s in sentinel.inspect(conn, get_case(conn, case_id))
                   if s.kind == "chain_broken")
     remedy = sentinel.heal(conn, broken, apply=True)
     assert remedy.allowed is False
@@ -133,7 +139,7 @@ def test_no_remediation_escapes_the_governor_at_any_level(conn):
         for confidence in (0.0, 0.3, 0.5, 0.9, 1.0):
             case_id = open_case(conn, autonomy=level, confidence=confidence,
                                 state="INVESTIGATING")
-            case = case_mod.get(conn, case_id)
+            case = get_case(conn, case_id)
             for stall in sentinel.inspect(conn, case, as_of=later(30)):
                 remedy = sentinel.assess(conn, stall, case)
                 spec = sentinel.REMEDIATIONS[stall.remediation]
@@ -164,7 +170,7 @@ def test_an_action_needing_approval_is_reported_not_performed(conn):
     manufacturing approval requests trains people to approve things they did not
     start."""
     case_id = open_case(conn, autonomy=1, confidence=0.2, state="INVESTIGATING")
-    case = case_mod.get(conn, case_id)
+    case = get_case(conn, case_id)
     stalls = sentinel.inspect(conn, case, as_of=later(30))
     assert stalls
     before = len(engine.pending_approvals(conn, case_id))
@@ -176,20 +182,20 @@ def test_an_action_needing_approval_is_reported_not_performed(conn):
 # ─────────────────────────────────────────────────── healing
 def test_a_dry_run_changes_nothing(conn):
     case_id = open_case(conn, autonomy=4, confidence=0.92, state="INVESTIGATING")
-    case = case_mod.get(conn, case_id)
+    case = get_case(conn, case_id)
     stall = sentinel.inspect(conn, case, as_of=later(30))[0]
     before_state = case["state"]
     before_chain = chain.head(conn, case_id)
 
     remedy = sentinel.heal(conn, stall, apply=False, as_of=later(30))
     assert remedy.verified == "not_attempted"
-    assert case_mod.get(conn, case_id)["state"] == before_state
+    assert get_case(conn, case_id)["state"] == before_state
     assert chain.head(conn, case_id) == before_chain
 
 
 def test_a_permitted_heal_runs_and_is_verified(conn):
     case_id = open_case(conn, autonomy=4, confidence=0.92, state="INVESTIGATING")
-    stall = sentinel.inspect(conn, case_mod.get(conn, case_id), as_of=later(30))[0]
+    stall = sentinel.inspect(conn, get_case(conn, case_id), as_of=later(30))[0]
     remedy = sentinel.heal(conn, stall, apply=True, as_of=later(30))
     assert remedy.allowed is True
     assert remedy.status == sentinel.HEALED
@@ -198,7 +204,7 @@ def test_a_permitted_heal_runs_and_is_verified(conn):
 
 def test_healing_is_recorded_on_the_chain(conn):
     case_id = open_case(conn, autonomy=4, confidence=0.92, state="INVESTIGATING")
-    stall = sentinel.inspect(conn, case_mod.get(conn, case_id), as_of=later(30))[0]
+    stall = sentinel.inspect(conn, get_case(conn, case_id), as_of=later(30))[0]
     sentinel.heal(conn, stall, apply=True, as_of=later(30))
     steps = [r["step"] for r in chain.rows(conn, case_id)]
     assert "sentinel.healing" in steps
@@ -207,7 +213,7 @@ def test_healing_is_recorded_on_the_chain(conn):
 
 def test_healing_leaves_the_chain_intact(conn):
     case_id = open_case(conn, autonomy=4, confidence=0.92, state="INVESTIGATING")
-    stall = sentinel.inspect(conn, case_mod.get(conn, case_id), as_of=later(30))[0]
+    stall = sentinel.inspect(conn, get_case(conn, case_id), as_of=later(30))[0]
     sentinel.heal(conn, stall, apply=True, as_of=later(30))
     assert chain.verify(conn, case_id)["ok"] is True
 
@@ -215,7 +221,7 @@ def test_healing_leaves_the_chain_intact(conn):
 def test_verification_re_reads_rather_than_trusting_the_call(conn, monkeypatch):
     """A remediation that runs without moving the case must report still_stuck."""
     case_id = open_case(conn, autonomy=4, confidence=0.92, state="INVESTIGATING")
-    stall = sentinel.inspect(conn, case_mod.get(conn, case_id), as_of=later(30))[0]
+    stall = sentinel.inspect(conn, get_case(conn, case_id), as_of=later(30))[0]
     monkeypatch.setattr(sentinel, "_perform", lambda *a, **k: None)
     remedy = sentinel.heal(conn, stall, apply=True, as_of=later(30))
     assert remedy.verified == "still_stuck"
@@ -225,7 +231,7 @@ def test_verification_re_reads_rather_than_trusting_the_call(conn, monkeypatch):
 def test_a_failing_remediation_does_not_raise(conn, monkeypatch):
     """A watchdog that crashes on a failed repair stops watching everything else."""
     case_id = open_case(conn, autonomy=4, confidence=0.92, state="INVESTIGATING")
-    stall = sentinel.inspect(conn, case_mod.get(conn, case_id), as_of=later(30))[0]
+    stall = sentinel.inspect(conn, get_case(conn, case_id), as_of=later(30))[0]
 
     def boom(*_a, **_k):
         raise RuntimeError("provider down")

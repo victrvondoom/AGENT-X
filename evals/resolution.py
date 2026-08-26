@@ -188,6 +188,7 @@ def _score_policy() -> dict:
     policy engine that answers differently on Tuesday is not a policy engine.
     """
     definition = get_definition("flight_delay_compensation")
+    assert definition is not None, "flight_delay_compensation must stay in the ontology"
     facts = {"flight.delay_minutes": 240, "flight.distance_km": 1850,
              "flight.disruption_reason": "technical"}
     runs = []
@@ -273,6 +274,7 @@ def _score_grounding() -> dict:
             c = case_mod.update(conn, c["id"], confidence=0.9,
                                 problem_type=expected, amount_minor=1200,
                                 currency="GBP")
+            assert c is not None, "just-created case must still exist"
             ev = egraph.add_evidence(conn, case_id=c["id"], workspace="default",
                                      subject=c["subject"], kind="transaction",
                                      text="Total charged: 12.00 GBP")

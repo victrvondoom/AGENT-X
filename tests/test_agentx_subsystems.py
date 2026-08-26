@@ -65,7 +65,8 @@ def test_status_reflects_working_not_merely_importing():
         check = getattr(module, "available", None)
         if not callable(check):
             continue
-        if not check().get("available"):
+        state = check()
+        if not (isinstance(state, dict) and state.get("available")):
             assert track.status() != tracks.LIVE, (
                 f"{track.id} says live but its subsystem cannot run")
 

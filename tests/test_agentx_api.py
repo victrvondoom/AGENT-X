@@ -62,6 +62,24 @@ def test_create_and_fetch_a_case(client, auth_headers):
     assert r2.json()["case"]["id"] == cid
 
 
+def test_case_list_endpoint_renders_eligibility_headline(client, auth_headers):
+    # Regression: list_cases() called eligibility.load()/headline() with no
+    # `eligibility` import in scope, so this endpoint 500'd on every request —
+    # nothing in the suite exercised GET /api/agentx/cases to catch it.
+    r = client.post("/api/agentx/cases", json={
+        "description": "Kartly charged me twice for order 402-9938271, "
+                       "2,399 INR each on 2026-08-02.",
+        "use_llm": False}, headers=auth_headers)
+    assert r.status_code == 200
+
+    r2 = client.get("/api/agentx/cases")
+    assert r2.status_code == 200
+    cases = r2.json()
+    assert len(cases) >= 1
+    assert "headline" in cases[0]
+    assert "amount" in cases[0]
+
+
 def test_unknown_case_is_404(client):
     r = client.get("/api/agentx/cases/PX-NOSUCHCASE")
     assert r.status_code == 404

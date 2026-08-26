@@ -23,7 +23,7 @@ from dotenv import load_dotenv                          # noqa: E402
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # pyright: ignore[reportAttributeAccessIssue] -- guarded by hasattr above
 
 import psycopg                                          # noqa: E402
 from core.trust import audit                            # noqa: E402
@@ -91,7 +91,8 @@ def t_cannot_skip():
     assert resumed is False, "the job advanced with fields still unreviewed"
     with conn.cursor() as cur:
         cur.execute("SELECT status FROM jobs WHERE id = %s", (JOB["id"],))
-        assert cur.fetchone()[0] == "NEEDS_REVIEW"
+        row = cur.fetchone()
+        assert row is not None and row[0] == "NEEDS_REVIEW"
     print("          direct resume() call refused -- the guard is in SQL", flush=True)
 
 
@@ -115,7 +116,9 @@ def t_no_double():
     with conn.cursor() as cur:
         cur.execute("SELECT id::text FROM fields WHERE job_id = %s AND name='account_number'",
                     (JOB["id"],))
-        fid = cur.fetchone()[0]
+        row = cur.fetchone()
+        assert row is not None
+        fid = row[0]
     try:
         review.decide(conn, JOB["id"], fid, "ACCEPT", "someone.else")
     except review.ReviewError as e:
@@ -162,7 +165,9 @@ check("zero remaining -> job resumes to APPROVED", t_resume)
 def t_closed():
     with conn.cursor() as cur:
         cur.execute("SELECT id::text FROM fields WHERE job_id=%s LIMIT 1", (JOB["id"],))
-        fid = cur.fetchone()[0]
+        row = cur.fetchone()
+        assert row is not None
+        fid = row[0]
     try:
         review.decide(conn, JOB["id"], fid, "ACCEPT", "late.reviewer")
     except review.ReviewError as e:

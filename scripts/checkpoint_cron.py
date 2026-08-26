@@ -27,7 +27,7 @@ from dotenv import load_dotenv                            # noqa: E402
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # pyright: ignore[reportAttributeAccessIssue] -- guarded by hasattr above
 
 DSN = os.environ.get("DATABASE_URL")
 if not DSN:

@@ -52,7 +52,7 @@ import urllib.error
 import urllib.parse
 import json
 
-from .base import Provider, ProviderResult
+from .base import Provider, ProviderResult, ErrorCode
 
 _REQUIRED_ENV = ("AGENT_X_SMTP_HOST", "AGENT_X_SMTP_USER",
                  "AGENT_X_SMTP_PASSWORD", "AGENT_X_SMTP_FROM")
@@ -127,11 +127,28 @@ class LiveEmailProvider(Provider):
                     s.starttls(context=ssl.create_default_context())
                     s.login(user, password)
                     s.send_message(msg)
+        except smtplib.SMTPAuthenticationError as e:
+            # The credentials themselves are wrong or expired — retrying the same
+            # send immediately fails the same way. This needs a person to fix the
+            # configured password/token, not another attempt.
+            return ProviderResult(
+                False, "error", self.id, self.mode,
+                message="Agent X could not sign in to send this email — the "
+                        "configured mail account needs to be reconnected.",
+                technical_detail=f"{type(e).__name__}: {e}",
+                error_code=ErrorCode.AUTH_REQUIRED, retryable=False)
+        except TimeoutError as e:
+            return ProviderResult(
+                False, "error", self.id, self.mode,
+                message="The mail server did not respond in time.",
+                technical_detail=f"{type(e).__name__}: {e}",
+                error_code=ErrorCode.TIMEOUT, retryable=True)
         except (smtplib.SMTPException, OSError, ssl.SSLError) as e:
             return ProviderResult(
                 False, "error", self.id, self.mode,
                 message=f"SMTP delivery failed: {type(e).__name__}: {e}",
-                retryable=True)
+                technical_detail=f"{type(e).__name__}: {e}",
+                error_code=ErrorCode.RETRYABLE, retryable=True)
 
         evidence = (
             f"Sent via SMTP ({host})\n"
@@ -169,7 +186,9 @@ class LiveBrowserProvider(Provider):
     def do_navigate(self, p: dict) -> ProviderResult:
         url = p.get("url") or ""
         if not url.startswith("http"):
-            return ProviderResult(False, "error", self.id, self.mode, message="Valid URL required")
+            return ProviderResult(False, "error", self.id, self.mode,
+                                  message="Valid URL required",
+                                  error_code=ErrorCode.INVALID_INPUT)
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 AgentX'})
             with urllib.request.urlopen(req, timeout=15) as response:
@@ -178,15 +197,50 @@ class LiveBrowserProvider(Provider):
             return ProviderResult(True, "accepted", self.id, self.mode,
                                   data={"status": status, "length": len(content)},
                                   evidence_text=content[:4000], evidence_kind="html")
+        except urllib.error.HTTPError as e:
+            if e.code == 401 or e.code == 403:
+                code, retryable = ErrorCode.AUTH_REQUIRED, False
+            elif e.code == 429:
+                code, retryable = ErrorCode.RATE_LIMITED, True
+            elif e.code >= 500:
+                code, retryable = ErrorCode.RETRYABLE, True
+            else:
+                code, retryable = ErrorCode.EXTERNAL_REJECTED, False
+            retry_after = None
+            hdr = e.headers.get("Retry-After") if e.headers else None
+            if hdr and hdr.strip().isdigit():
+                retry_after = float(hdr.strip())
+            return ProviderResult(
+                False, "error", self.id, self.mode,
+                message=f"The site returned {e.code} {e.reason}.",
+                technical_detail=str(e), error_code=code, retryable=retryable,
+                retry_after=retry_after)
+        except TimeoutError as e:
+            return ProviderResult(
+                False, "error", self.id, self.mode,
+                message="The site did not respond in time.",
+                technical_detail=f"{type(e).__name__}: {e}",
+                error_code=ErrorCode.TIMEOUT, retryable=True)
         except Exception as e:
-            return ProviderResult(False, "error", self.id, self.mode, message=f"HTTP fetch failed: {e}")
+            return ProviderResult(
+                False, "error", self.id, self.mode,
+                message="Could not reach that page.",
+                technical_detail=f"{type(e).__name__}: {e}",
+                error_code=ErrorCode.RETRYABLE, retryable=True)
 
     def do_retrieve(self, p: dict) -> ProviderResult:
         return self.do_navigate(p)
 
 
 class LiveMerchantProvider(Provider):
-    """Interacts with merchant APIs."""
+    """Interacts with merchant APIs.
+
+    Not yet implemented: there is no real HTTP call behind this class, so
+    `configured()` reports False until one exists — the same discipline
+    `LiveEmailProvider` applies to its own credentials. Registering this as
+    `mode='live'` without an actual integration would let a real refund case
+    receive a fabricated success.
+    """
     id = "live:merchant"
     family = "merchant"
     mode = "live"
@@ -195,17 +249,21 @@ class LiveMerchantProvider(Provider):
 
     @staticmethod
     def configured() -> bool:
-        return os.environ.get("AGENT_X_SANDBOX", "1") in ("0", "false", "no")
+        return False
 
     def do_request_refund(self, p: dict) -> ProviderResult:
-        # Fallback to email if no endpoint provided
-        if not p.get("endpoint"):
-            return ProviderResult(False, "error", self.id, self.mode, message="Live merchant requires endpoint or uses email fallback.")
-        return ProviderResult(True, "accepted", self.id, self.mode, evidence_text="Refund requested via Live Merchant.")
+        return ProviderResult(
+            False, "error", self.id, self.mode,
+            message="Live merchant refund requests are not implemented yet.",
+            error_code=ErrorCode.TOOL_UNAVAILABLE, retryable=False)
 
 
 class LiveBookingProvider(Provider):
-    """Inspects bookings via real endpoints."""
+    """Inspects bookings via real endpoints.
+
+    Not yet implemented: there is no real HTTP call behind this class, so
+    `configured()` reports False until one exists — see LiveMerchantProvider.
+    """
     id = "live:booking"
     family = "booking"
     mode = "live"
@@ -214,14 +272,21 @@ class LiveBookingProvider(Provider):
 
     @staticmethod
     def configured() -> bool:
-        return os.environ.get("AGENT_X_SANDBOX", "1") in ("0", "false", "no")
+        return False
 
     def do_retrieve(self, p: dict) -> ProviderResult:
-        return ProviderResult(True, "accepted", self.id, self.mode, evidence_text="Booking data retrieved via Live Provider.")
+        return ProviderResult(
+            False, "error", self.id, self.mode,
+            message="Live booking retrieval is not implemented yet.",
+            error_code=ErrorCode.TOOL_UNAVAILABLE, retryable=False)
 
 
 class LivePaymentProvider(Provider):
-    """Live payment disputes."""
+    """Live payment disputes.
+
+    Not yet implemented: there is no real HTTP call behind this class, so
+    `configured()` reports False until one exists — see LiveMerchantProvider.
+    """
     id = "live:payment"
     family = "payment"
     mode = "live"
@@ -230,10 +295,13 @@ class LivePaymentProvider(Provider):
 
     @staticmethod
     def configured() -> bool:
-        return os.environ.get("AGENT_X_SANDBOX", "1") in ("0", "false", "no")
+        return False
 
     def do_escalate(self, p: dict) -> ProviderResult:
-        return ProviderResult(True, "accepted", self.id, self.mode, evidence_text="Payment dispute initiated via Live Provider.")
+        return ProviderResult(
+            False, "error", self.id, self.mode,
+            message="Live payment dispute escalation is not implemented yet.",
+            error_code=ErrorCode.TOOL_UNAVAILABLE, retryable=False)
 
 
 # Providers whose `configured()` is checked at bootstrap; add new live providers

@@ -415,6 +415,7 @@ def _plan_escalation(conn, c: dict, now: str, *, why: str) -> None:
         for key in ("await_response", "chase"):
             st = plan.step(key)
             if st and st.status in ("PENDING", "AWAITING_AUTH"):
+                assert st.id is not None, "a step on an active plan is always persisted"
                 planner.set_step_status(conn, st.id, "SKIPPED")
     if int(c.get("autonomy_level", 2)) >= 3:
         case_mod.schedule_followup(conn, c["id"], kind="escalate",

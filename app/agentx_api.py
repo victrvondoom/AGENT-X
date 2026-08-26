@@ -31,7 +31,7 @@ from pydantic import BaseModel
 
 from agentx import capabilities as caps
 from agentx import case as case_mod
-from agentx import chain, demo, documents, engine, followup, governor, ids
+from agentx import chain, demo, documents, eligibility, engine, followup, governor, ids
 from agentx import knowledge, sentinel, speech, tracks
 from agentx import ontology, outcomes, planner, policy, receipt, sealing, store, understanding
 from agentx.evidence import contradiction, graph as egraph, package as pkg
@@ -324,6 +324,17 @@ def list_cases(workspace: str = "default", state: str | None = None,
         return out
 
 
+@router.get("/action-center")
+def action_center(workspace: str = "default", user_ref: str | None = None,
+                  limit: int = 100):
+    """The user's operational inbox: everything across their cases that needs
+    attention, in one call — derived from live case/approval/question state,
+    never a separate notifications table (see engine.action_items)."""
+    with _conn() as conn:
+        return {"items": engine.action_items(conn, workspace=workspace,
+                                             user_ref=user_ref, limit=limit)}
+
+
 @router.get("/cases/{case_id}")
 def get_case(case_id: str):
     with _conn() as conn:
@@ -464,6 +475,8 @@ def close_case(case_id: str, r: CloseReq, _: None = Depends(require_auth)):
 def evidence_text(case_id: str, evidence_id: str):
     """The stored text of one artefact, unsealed — or the tombstone after erasure."""
     with _conn() as conn:
+        if not any(e["id"] == evidence_id for e in egraph.list_evidence(conn, case_id)):
+            raise HTTPException(404, f"no evidence {evidence_id!r} on case {case_id!r}")
         text = egraph.evidence_text(conn, evidence_id)
     if text is None:
         return ("This evidence was sealed under the case key, and that key has been "

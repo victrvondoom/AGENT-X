@@ -120,14 +120,33 @@ def understand(conn, case_id: str, *, use_llm: bool = True) -> dict:
                      why="Agent X could not match this to any problem it knows how to "
                          "resolve, so it would rather ask than guess.",
                      kind="fact")
-        _move(conn, case_id, "NEEDS_INPUT",
-              "the description does not match any known problem type")
-        return snapshot(conn, case_id)
+        general = get_definition("general_consumer_problem")
+        if general is None:
+            # Definition missing from this deployment's catalogue — fall back to the
+            # old behaviour rather than crash on a KeyError-shaped None below.
+            _move(conn, case_id, "NEEDS_INPUT",
+                  "the description does not match any known problem type")
+            return snapshot(conn, case_id)
+        chain.append(conn, case_id, "understanding.fallback", "AGENT",
+                     {"reason": "no catalogue entry scored any signal against this "
+                               "narrative; proceeding on the general consumer-problem "
+                               "path instead of refusing",
+                      "problem_type": general.problem_type})
+        case_mod.update(conn, case_id, domain=general.domain,
+                        problem_type=general.problem_type,
+                        confidence=round(general.prior, 3), risk=general.risk,
+                        title=general.label)
+        # A question is still open above — answering it may add enough detail for a
+        # later understand() call to match a real problem type and upgrade off this
+        # path entirely. Until then, the case still moves rather than stalling.
+        _move(conn, case_id, "INVESTIGATING",
+              "no specific match; proceeding as a general consumer problem")
+        return investigate(conn, case_id, use_llm=use_llm)
 
+    top_definition = get_definition(top.problem_type)
     case_mod.update(conn, case_id, domain=top.domain, problem_type=top.problem_type,
                     confidence=round(top.posterior, 3),
-                    risk=(get_definition(top.problem_type).risk
-                          if get_definition(top.problem_type) else "medium"),
+                    risk=top_definition.risk if top_definition else "medium",
                     title=_title(c, top))
 
     if u.ambiguous:
@@ -251,6 +270,8 @@ def investigate(conn, case_id: str, *, use_llm: bool = True) -> dict:
     """Gather what is retrievable, analyse rights, rank remedies, compose a plan."""
     _ready()
     c = case_mod.get(conn, case_id)
+    if c is None:
+        raise ValueError(f"case {case_id} not found")
     definition = get_definition(c["problem_type"]) if c["problem_type"] else None
     if definition is None:
         # Agent X's ontology does not model this problem, so there is no
@@ -316,6 +337,8 @@ def investigate(conn, case_id: str, *, use_llm: bool = True) -> dict:
     # ── case confidence ───────────────────────────────────────────────────
     _set_case_confidence(conn, case_id, definition, missing, blocking)
     c = case_mod.get(conn, case_id)
+    if c is None:
+        raise ValueError(f"case {case_id} not found")
 
     # ── eligibility ───────────────────────────────────────────────────────
     remedies = eligibility.assess(definition=definition, findings=findings,
@@ -611,6 +634,7 @@ def advance(conn, case_id: str, *, max_steps: int = 6,
     if not plan:
         return {"case_id": case_id, "ran": [], "blocked": "no active plan"}
     if plan.status == "VALIDATED":
+        assert plan.id is not None, "an active plan is always persisted"
         planner.set_plan_status(conn, plan.id, "ACTIVE")
         plan.status = "ACTIVE"
 
@@ -620,6 +644,8 @@ def advance(conn, case_id: str, *, max_steps: int = 6,
 
     for _ in range(max_steps):
         c = case_mod.get(conn, case_id)
+        if c is None:
+            break
         step = planner.next_step(plan)
         if step is None:
             break
@@ -763,6 +789,7 @@ def _last_external_ref(conn, case_id: str) -> str | None:
 
 def _finish_step(conn, plan, step, status: str) -> None:
     step.status = status
+    assert step.id is not None, "a step reached from an active plan is always persisted"
     planner.set_step_status(conn, step.id, status)
 
 
@@ -852,6 +879,7 @@ def _post_action(conn, case_id: str, step, result: dict, *, as_of: str | None) -
             # wait has been satisfied by something more specific. Leaving it PENDING
             # would make the next advance schedule a second, duplicate chase.
             if wait_step and wait_step.status == "PENDING":
+                assert wait_step.id is not None, "a step on an active plan is always persisted"
                 planner.set_step_status(conn, wait_step.id, "DONE")
             _move(conn, case_id, "WAITING_EXTERNAL",
                   f"they said they would respond within "
@@ -863,8 +891,10 @@ def _post_action(conn, case_id: str, step, result: dict, *, as_of: str | None) -
                 last = ex
                 break
         if last:
-            v = runner.verify(conn, case=case_mod.get(conn, case_id),
-                              execution_id=last["id"])
+            c = case_mod.get(conn, case_id)
+            if c is None:
+                return
+            v = runner.verify(conn, case=c, execution_id=last["id"])
             if v["verified"] == "verified":
                 case_mod.update(conn, case_id, resolution="resolved",
                                 outcome_summary=v.get("detail"))
@@ -897,6 +927,7 @@ def approve(conn, case_id: str, authorization_id: str, *, granted: bool,
                 continue
             if step_id and st.id != step_id:
                 continue
+            assert st.id is not None, "a step on an active plan is always persisted"
             planner.set_step_status(conn, st.id, "PENDING")
         # Everything the plan reached before the authorised step is behind us.
         if step_id:
@@ -904,6 +935,7 @@ def approve(conn, case_id: str, authorization_id: str, *, granted: bool,
             if target:
                 for st in plan.steps:
                     if st.ordinal < target.ordinal and st.status == "PENDING":
+                        assert st.id is not None, "a step on an active plan is always persisted"
                         planner.set_step_status(conn, st.id, "SKIPPED")
 
     # A paused follow-up is fired by the SCHEDULER, not the plan executor — it is
@@ -932,6 +964,70 @@ def pending_approvals(conn, case_id: str) -> list[dict]:
                     " FROM authorizations WHERE case_id = %s AND granted IS NULL"
                     " ORDER BY requested_at ASC", (case_id,))
         return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+# The one attention-worthy fact each case state reduces to. Deliberately a
+# strict subset of CASE_STATES, not a parallel vocabulary: adding a case state
+# without deciding what it means for the action center is exactly the drift
+# that leaves an item silently unsurfaced, so a state missing here is a state
+# nobody has decided this about yet, not an oversight to route around.
+_ACTION_KIND = {
+    "ACTION_REQUIRED": "approval_required",
+    "NEEDS_INPUT": "input_required",
+    "FOLLOW_UP_REQUIRED": "follow_up_due",
+    "ESCALATED": "follow_up_due",
+    "RESOLVED": "resolved",
+}
+
+
+def action_items(conn, *, workspace: str = "default", user_ref: str | None = None,
+                 limit: int = 100) -> list[dict]:
+    """Everything across this workspace's cases that needs a person's attention,
+    right now — the Action Center's one query.
+
+    Deliberately derived from live case/approval/question state on every call
+    rather than a separate notifications table: a case whose approval was
+    already granted through the case page a moment ago cannot then show a
+    stale "approval required" card here, because there is nothing to go stale
+    — this reads the same rows the case detail page itself reads.
+    """
+    _ready()
+    cases = case_mod.list_cases(conn, workspace=workspace, user_ref=user_ref,
+                                state="open", limit=limit)
+    # RESOLVED is terminal (excluded by state="open") but belongs in the Action
+    # Center too — briefly, as the thing that just finished — so it is added
+    # back explicitly rather than by loosening the open/closed filter, which
+    # would also let CLOSED_UNRESOLVED and WITHDRAWN back in unwanted.
+    cases += case_mod.list_cases(conn, workspace=workspace, user_ref=user_ref,
+                                 state="RESOLVED", limit=limit)
+
+    items: list[dict] = []
+    for c in cases:
+        kind = _ACTION_KIND.get(c["state"])
+        if not kind:
+            continue
+        cid, title = c["id"], (c.get("title") or (c["description"] or "")[:80])
+        if kind == "approval_required":
+            for a in pending_approvals(conn, cid):
+                items.append({"kind": kind, "case_id": cid, "title": title,
+                             "detail": a["prompt"], "at": a["requested_at"],
+                             "item_id": a["id"]})
+        elif kind == "input_required":
+            for q in case_mod.open_questions(conn, cid):
+                items.append({"kind": kind, "case_id": cid, "title": title,
+                             "detail": q["question"], "at": c["updated_at"],
+                             "item_id": q["id"]})
+        elif kind == "follow_up_due":
+            items.append({"kind": kind, "case_id": cid, "title": title,
+                         "detail": "waiting on a response that is now overdue",
+                         "at": c["updated_at"], "item_id": cid})
+        elif kind == "resolved":
+            items.append({"kind": kind, "case_id": cid, "title": title,
+                         "detail": c.get("outcome_summary") or "case resolved",
+                         "at": c.get("closed_at") or c["updated_at"], "item_id": cid})
+
+    items.sort(key=lambda i: i["at"] or "", reverse=True)
+    return items[:limit]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1112,6 +1208,8 @@ def evidence_package(conn, case_id: str, *, audience: str = "human_review") -> d
     """Build, sign and store an evidence package for a specific audience."""
     _ready()
     c = case_mod.get(conn, case_id)
+    if c is None:
+        raise ValueError(f"case {case_id} not found")
     body = pkg.build(conn, case_id, audience=audience, claims=_claims(conn, case_id, c))
     from agentx.receipt import _signing_key
     env = pkg.sign(body, _signing_key())

@@ -91,7 +91,9 @@ def test_escalation_route_returns_nothing_when_uncovered():
 
 
 def test_escalation_prompt_forbids_naming_a_regulator_from_memory():
-    prompt = modes.get("escalation_route").prompt
+    mode = modes.get("escalation_route")
+    assert mode is not None
+    prompt = mode.prompt
     assert "ONLY" in prompt and "from memory" in prompt
 
 

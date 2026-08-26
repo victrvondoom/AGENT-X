@@ -356,10 +356,10 @@ if(new URLSearchParams(location.search).get('embed')==='1'){
 <a href="#app" class="skip-link">Skip to content</a>
 <header>
   <div class="bar">
-    <div class="logo">
+    <a class="logo" href="/app" title="Back to Agent X" style="color:inherit">
       <svg width="26" height="26" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="13" stroke="currentColor" stroke-width="2.6"/><path d="M16 8v9l6 4" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
       <span class="serif" style="font-size:22px">Agent X</span>
-    </div>
+    </a>
     <nav class="tabs" id="tabs" aria-label="Views"></nav>
     <span class="spacer"></span>
     <button type="button" class="chip" id="cmdBtn" aria-label="Search or jump anywhere" title="Search or jump anywhere (Ctrl K)">
@@ -453,7 +453,6 @@ window.addEventListener('hashchange', render);
 const VIEWS = [
   {id:'',            label:'Home'},
   {id:'capabilities',label:'Capabilities'},
-  {id:'evidence',    label:'Evidence'},
   {id:'how',         label:'How it works'},
 ];
 
@@ -469,8 +468,7 @@ async function render(){
   paintTabs();
   if(r.startsWith('/case/'))   return renderCase(r.slice(6));
   if(r === '/how')             return renderHow();
-  if(r === '/capabilities')    return renderCapabilities();
-  if(r === '/evidence')        return renderEvidence();
+  if(r === '/capabilities')    return renderHow();
   return renderHome();
 }
 
@@ -515,6 +513,7 @@ async function renderHome(){
       <div class="examples" id="examples"></div>
     </div>
     <div id="live"></div>
+    <div class="section" id="actionCenterBox"></div>
     <div class="section" id="sentinelBox"></div>
     <div class="section" id="caseList"><h2>Your cases</h2><div class="working"><span class="spin"></span> loading…</div></div>
     <div class="section" id="demoBox"></div>`;
@@ -529,7 +528,33 @@ async function renderHome(){
   updateAutoChip();
   loadCases();
   loadSentinel();
+  loadActionCenter();
   renderDemo();
+}
+
+// The operational inbox: everything across every case that needs a person's
+// attention, in one place, sourced from one query — never re-derived per
+// widget, so it cannot disagree with what the case's own page shows for the
+// same item a moment later.
+const ACTION_KIND_LABEL = {
+  approval_required: 'Needs your approval',
+  input_required: 'Needs one thing from you',
+  follow_up_due: 'They have gone quiet',
+  resolved: 'Resolved',
+};
+
+async function loadActionCenter(){
+  const box = $('#actionCenterBox'); if(!box) return;
+  let r; try{ r = await api('/action-center'); }catch(e){ box.innerHTML=''; return; }
+  const items = (r && r.items) || [];
+  if(!items.length){ box.innerHTML=''; return; }
+  box.innerHTML = `<h2>Needs your attention — ${items.length}</h2>
+    ${items.slice(0, 8).map(i => `
+      <a href="#/case/${esc(i.case_id)}" class="claim" style="display:block;text-decoration:none;color:inherit">
+        <div class="t">${esc(i.title || i.case_id)}</div>
+        <div class="m"><span class="chip ${i.kind==='resolved'?'ok':(i.kind==='approval_required'?'brand':'warn')}">${esc(ACTION_KIND_LABEL[i.kind] || i.kind)}</span>
+          <span style="color:var(--muted)">${esc((i.detail||'').slice(0,120))}</span></div>
+      </a>`).join('')}`;
 }
 
 // Agent X watching its own work. Rendered only when something is actually
@@ -1043,6 +1068,20 @@ function renderFolds(s, best){
   parts.push(fold(`Evidence — ${(s.evidence||[]).length} item${(s.evidence||[]).length===1?'':'s'}`, `
     <p style="color:var(--muted);font-size:13.5px;margin:0 0 14px">Every fact Agent X uses traces to one of these. The
       hash is of the file you gave it, so you can re-hash your own copy and check.</p>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:12px;border:1px dashed var(--line);border-radius:10px">
+      <input type="file" id="evidenceFile" accept="image/*,.pdf,.txt" style="max-width:220px;font-size:12.5px">
+      <select id="evidenceKind" class="chip" style="padding:4px 8px">
+        <option value="screenshot">Screenshot</option>
+        <option value="receipt">Receipt</option>
+        <option value="invoice">Invoice or bill</option>
+        <option value="order_confirmation">Order confirmation</option>
+        <option value="booking_confirmation">Booking confirmation</option>
+        <option value="photograph">Photograph</option>
+        <option value="email">Email correspondence</option>
+      </select>
+      <button type="button" class="btn sm" id="btnUploadEvidence">Add evidence</button>
+      <span id="evidenceUploadOut" style="font-size:12.5px;color:var(--muted)"></span>
+    </div>
     <div class="scroll"><table class="plain"><thead><tr><th>Kind</th><th>File</th><th>Trust</th><th>SHA-256</th></tr></thead><tbody>
       ${(s.evidence||[]).map(e=>`<tr>
         <td>${esc(e.kind.replace(/_/g,' '))}</td>
@@ -1097,6 +1136,29 @@ function renderFolds(s, best){
     <div id="proofOut"></div>`, false, 'receiptFold'));
 
   $('#folds').innerHTML = parts.join('');
+
+  const evOut = $('#evidenceUploadOut');
+  $('#btnUploadEvidence').onclick = async()=>{
+    const input = $('#evidenceFile');
+    const f = input.files && input.files[0];
+    if(!f) return toast('Choose a file first.');
+    const btn = $('#btnUploadEvidence');
+    btn.disabled = true; evOut.textContent = 'uploading…';
+    try{
+      const fd = new FormData();
+      fd.append('file', f);
+      fd.append('kind', $('#evidenceKind').value);
+      const r = await api(`/cases/${encodeURIComponent(c.id)}/upload`, {method:'POST', body:fd});
+      const facts = (r.facts||[]).length;
+      const contradictions = (r.contradictions||[]).length;
+      evOut.textContent = `added — ${facts} fact${facts===1?'':'s'} found` +
+        (contradictions? `, ${contradictions} contradiction${contradictions===1?'':'s'}` : '') +
+        (r.note? ` (${r.note})` : '');
+      input.value = '';
+      render();  // re-render this case with the new evidence and any re-run analysis
+    }catch(e){ evOut.textContent = ''; toast(e.message); }
+    finally{ btn.disabled = false; }
+  };
 
   const out = $('#proofOut');
   $('#btnReceipt').onclick = async()=>{ out.innerHTML='<div class="working"><span class="spin"></span> building…</div>';

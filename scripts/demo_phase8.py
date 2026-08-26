@@ -24,7 +24,7 @@ from dotenv import load_dotenv                            # noqa: E402
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # pyright: ignore[reportAttributeAccessIssue] -- guarded by hasattr above
 
 import psycopg                                            # noqa: E402
 
@@ -38,6 +38,7 @@ from db import store                                      # noqa: E402
 
 @contextlib.contextmanager
 def _direct():
+    assert DSN is not None, "checked at module load — see the SystemExit above"
     c = psycopg.connect(DSN, autocommit=True, connect_timeout=10)
     try:
         yield c
@@ -163,7 +164,9 @@ def t_tamper_breaks_inclusion():
     with conn.cursor() as cur:
         cur.execute("SELECT detail_canonical FROM audit_log WHERE job_id=%s AND seq=0",
                     (S["job"],))
-        orig = cur.fetchone()[0]
+        row = cur.fetchone()
+        assert row is not None
+        orig = row[0]
         cur.execute("UPDATE audit_log SET detail=%s, detail_canonical=%s "
                     "WHERE job_id=%s AND seq=0",
                     ('{"engine":"forged"}', '{"engine":"forged"}', S["job"]))

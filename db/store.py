@@ -85,6 +85,8 @@ def _is_write(stmt) -> bool:
 class MockCursor:
     """Read-only stand-in used when the database cannot be reached."""
 
+    rowcount = 0
+
     def __enter__(self):
         return self
 
@@ -113,6 +115,12 @@ class MockConnection:
 
     def commit(self):
         pass
+
+    @contextmanager
+    def transaction(self):
+        # Nothing to commit or roll back: every write inside the block still
+        # goes through MockCursor.execute() and raises OfflineWriteError there.
+        yield self
 
 
 def pool() -> ConnectionPool:
@@ -335,11 +343,11 @@ def apply_schema(conn) -> int:
             if not optional:
                 raise
             warnings.append(f"{head} -> {str(e).splitlines()[0][:120]}")
-    apply_schema.warnings = warnings
+    apply_schema.warnings = warnings  # pyright: ignore[reportFunctionMemberAccess]
     return n
 
 
-apply_schema.warnings = []
+apply_schema.warnings = []  # pyright: ignore[reportFunctionMemberAccess]
 
 
 def to_vector(values) -> str:
@@ -351,7 +359,16 @@ def logical_now(conn) -> str:
     """Current cluster logical timestamp — the anchor for AS OF SYSTEM TIME proofs."""
     with conn.cursor() as cur:
         cur.execute("SELECT cluster_logical_timestamp()::string")
-        return cur.fetchone()[0]
+        return scalar(cur)
+
+
+def scalar(cur):
+    """First column of the next row. For a COUNT(*) or a RETURNING clause after a
+    successful write, exactly one row is always expected — a missing one is a real
+    bug, not a case to handle quietly."""
+    row = cur.fetchone()
+    assert row is not None, "expected exactly one row"
+    return row[0]
 
 
 @atexit.register

@@ -279,7 +279,8 @@ def extract_llm(text: str, kind: str, want: tuple[str, ...] = ()) -> list[FactCa
     hint = f"\n\nFacts still needed: {', '.join(want)}" if want else ""
     try:
         from llm import client
-        got = client.chat_json(_LLM_SYSTEM, f"Document type: {kind}\n\n{text[:6000]}{hint}")
+        got = client.chat_json(_LLM_SYSTEM, f"Document type: {kind}\n\n{text[:6000]}{hint}",
+                               task="extract")
     except Exception:
         return []
     rows = got.get("facts") if isinstance(got, dict) else None

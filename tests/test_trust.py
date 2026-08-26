@@ -31,7 +31,7 @@ DSN = os.environ.get("DATABASE_URL")
 # fail red for a developer with no database, it skips. `not DSN` let a template
 # value through and turned a clean skip into a real connection attempt against
 # the literal host "HOST".
-_UNFILLED = DSN and ("USER:PASSWORD@HOST" in DSN or "@HOST:" in DSN)
+_UNFILLED = bool(DSN and ("USER:PASSWORD@HOST" in DSN or "@HOST:" in DSN))
 needs_db = pytest.mark.skipif(not DSN or _UNFILLED,
                               reason="DATABASE_URL not set (or still the template)")
 
@@ -170,6 +170,7 @@ class TestCertificateOffline:
 @pytest.fixture(scope="module")
 def conn():
     import psycopg
+    assert DSN is not None, "only reached by @needs_db-marked tests"
     c = psycopg.connect(DSN, autocommit=True, connect_timeout=10)
     yield c
     c.close()

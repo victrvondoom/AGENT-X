@@ -442,8 +442,9 @@ def api_inspect_booking(r: InspectBookingReq):
 
     facts: dict[str, str | int | float] = {}
     for f in _extract.extract(r.text, "receipt", use_llm=False):
-        facts.setdefault(f.predicate, f.value_num if f.value_num is not None
-                         else f.value_text)
+        value = f.value_num if f.value_num is not None else f.value_text
+        if value is not None:
+            facts.setdefault(f.predicate, value)
     money = normalize.money(r.text)
     jurisdiction, _why = policy.detect_jurisdiction(
         currency=(money or {}).get("currency"))

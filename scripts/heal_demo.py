@@ -28,7 +28,7 @@ THRESHOLD = 30
 def _node_count() -> int:
     with store.connect() as conn, conn.cursor() as c:
         c.execute("SELECT count(*) FROM nodes WHERE workspace = 'default'")
-        return c.fetchone()[0]
+        return store.scalar(c)
 
 
 def main() -> None:

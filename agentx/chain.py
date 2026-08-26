@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from typing import cast
 
 from core.trust.audit import GENESIS, canonical, compute_hash
 from agentx import ids, sealing
@@ -215,10 +216,15 @@ def readable(conn, case_id: str) -> list[dict]:
     out = []
     for r in rows(conn, case_id):
         detail = r["detail"]
+        parsed: object
         try:
             parsed = json.loads(detail) if isinstance(detail, str) else detail
         except (TypeError, ValueError):
-            parsed = {"_unreadable": True}
+            # cast, not a plain literal: an unannotated {"_unreadable": True} is
+            # inferred as dict[str, bool] and that narrow shape leaks into every
+            # later isinstance(parsed, dict) branch below, breaking unrelated dict
+            # operations on parsed with nonsense inferred key/value types.
+            parsed = cast(object, {"_unreadable": True})
         shredded = False
         if r["sealed"] and isinstance(parsed, dict) and "_clear" in parsed:
             view = dict(parsed.get("_clear") or {})

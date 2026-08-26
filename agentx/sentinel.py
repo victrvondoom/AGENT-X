@@ -343,7 +343,7 @@ def _perform(conn, stall: Stall, case: dict, *, as_of: str | None = None) -> Non
         engine.investigate(conn, stall.case_id, use_llm=False)
     elif stall.remediation == "retry_execution":
         from agentx import engine
-        engine.advance(conn, stall.case_id, max_steps=1, use_llm=False)
+        engine.advance(conn, stall.case_id, max_steps=1, as_of=as_of)
     # flag_for_human never reaches here — `assess()` refuses it first.
 
 

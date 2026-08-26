@@ -31,7 +31,7 @@ def now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def parse(ts: str | None) -> datetime | None:
+def parse(ts: str | datetime | None) -> datetime | None:
     """Parse a timestamp, always returning it timezone-aware.
 
     A bare date ("2026-08-02") comes out of document extraction constantly and

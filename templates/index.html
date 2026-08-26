@@ -198,7 +198,18 @@ summary:focus-visible {
   <main id="main" tabindex="-1" class="flex min-h-0 flex-1 flex-col overflow-hidden relative">
 
     <!-- Workspace. The resolution engine's own UI, mounted in place filling the entire content area -->
-    <section data-view="workspace" class="hidden min-h-0 flex-1 flex-col w-full h-full">
+    <section data-view="workspace" class="hidden min-h-0 flex-1 flex-col w-full h-full relative">
+      <!-- Masks the fonts/layout flash while /agentx paints inside the iframe: shown the
+           moment the iframe's src is set, hidden only once that document fires load. Without
+           this, the iframe briefly shows its own raw unstyled markup before its fonts and
+           layout settle. -->
+      <div id="wsLoading" class="hidden absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-zinc-50 dark:bg-zinc-950">
+        <div class="flex gap-1.5">
+          <span class="dot h-2 w-2 rounded-full bg-zinc-400 dark:bg-zinc-600"></span>
+          <span class="dot h-2 w-2 rounded-full bg-zinc-400 dark:bg-zinc-600"></span>
+          <span class="dot h-2 w-2 rounded-full bg-zinc-400 dark:bg-zinc-600"></span>
+        </div>
+      </div>
       <iframe id="wsFrame" title="Workspace" src="about:blank"
               class="min-h-0 w-full flex-1 h-full border-0" style="display:block; width:100%; height:100%; border:none;"></iframe>
     </section>
@@ -300,14 +311,13 @@ summary:focus-visible {
           <div id="capPopoverPanel" class="hidden absolute left-0 sm:left-28 bottom-full mb-2 z-50 w-64 max-w-[90vw] rounded-xl border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-[#1a1a1f]">
             <div class="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Select Goal</div>
             
+            <!-- "Auto-Detect" is a UI-only sentinel (activeCapability === 'auto' -> no
+                 capability override sent, core/ask.py picks) — not a core/modes.py
+                 entry, so it stays hand-written. Everything below it is built at load
+                 from GET /api/modes, same as #bookCapList: these used to be hardcoded
+                 too and had the same silent-drift risk the comment below describes. -->
             <div id="genCapList" class="space-y-1">
               <button type="button" data-cap="auto" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs font-medium text-violet-600 bg-violet-500/10 dark:text-violet-300">Auto-Detect</button>
-              <button type="button" data-cap="research" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Research</button>
-              <button type="button" data-cap="create" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Create</button>
-              <button type="button" data-cap="analyze" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Analyze</button>
-              <button type="button" data-cap="build" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Build</button>
-              <button type="button" data-cap="decide" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Decide</button>
-              <button type="button" data-cap="learn" class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Learn</button>
             </div>
 
             <!-- Built at load from GET /api/modes, the same catalogue ask() routes
@@ -583,7 +593,7 @@ summary:focus-visible {
    window.fetch=function(u,o){o=o||{};const rel=(typeof u==='string')&&u.charAt(0)==='/';const t=localStorage.getItem('agentx.token');
      if(rel&&t)o.headers=Object.assign({},o.headers,{Authorization:'Bearer '+t});
      return _f(u,o).then(function(r){
-       if(r.status===401&&rel){return askToken().then(function(nt){
+       if(r.status===401&&rel&&!o.silent401){return askToken().then(function(nt){
          if(nt){localStorage.setItem('agentx.token',nt);o.headers=Object.assign({},o.headers,{Authorization:'Bearer '+nt});return _f(u,o);}
          return r;});}
        return r;});};
@@ -664,7 +674,12 @@ summary:focus-visible {
  // there is no reason to pay for that until someone asks for it.
  function loadWorkspace(){
    const f = $('wsFrame');
-   if(f && f.getAttribute('src') === 'about:blank') f.setAttribute('src','/agentx?embed=1');
+   if(f && f.getAttribute('src') === 'about:blank'){
+     const overlay = $('wsLoading');
+     if(overlay) overlay.classList.remove('hidden');
+     f.addEventListener('load', ()=>{ if(overlay) overlay.classList.add('hidden'); }, {once:true});
+     f.setAttribute('src','/agentx?embed=1');
+   }
  }
 
  // ── Capabilities ─────────────────────────────────────────────────────────
@@ -713,7 +728,7 @@ summary:focus-visible {
        el.innerHTML = cases.map(c => 
          '<div class="rounded-xl border border-zinc-300 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-[#1a1a1f]">'+
          '<div class="flex items-center justify-between"><span class="mono text-xs font-bold text-violet-600 dark:text-violet-400">'+esc(c.case_id)+'</span><span class="rounded bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300 uppercase">'+esc(c.domain)+'</span></div>'+
-         '<p class="mt-2 text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">'+esc(c.description)+'</p>'+
+         '<p class="mt-2 text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">'+esc(c.title)+'</p>'+
          '</div>'
        ).join('');
      }
@@ -984,6 +999,25 @@ summary:focus-visible {
   }
   wireCapButtons();
 
+  // Build the general-task goals from the server's catalogue, same reasoning as
+  // the consumer list below: hardcoding them here is exactly the drift that let
+  // four consumer goals go silently unhandled before #bookCapList was generated.
+  (async () => {
+    const list = document.getElementById('genCapList');
+    if(!list) return;
+    try{
+      const cat = await (await fetch('/api/modes')).json();
+      const group = (cat.groups||[]).find(g => g.id === 'general');
+      if(!group || !group.modes.length) return;
+      list.insertAdjacentHTML('beforeend', group.modes.map(m =>
+        `<button type="button" data-cap="${m.id}"
+          class="cap-opt-btn w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">
+          ${m.label}
+        </button>`).join(''));
+      wireCapButtons();
+    }catch(_){ /* picker keeps working with just Auto-Detect */ }
+  })();
+
   // Build the consumer goals from the server's catalogue. A goal marked
   // "grounded" answers from real retrieved material — the published escalation
   // ladder, or Agent X's own closed-case history — rather than from the model's
@@ -1092,7 +1126,7 @@ summary:focus-visible {
          t.msgs.push({role:'assistant',content:'Booking issue inspected successfully.',sources:[]});
          saveThreads();
          try {
-           fetch('/api/cases', {
+           const caseRes = await fetch('/api/cases', {
              method: 'POST',
              headers: {'Content-Type':'application/json'},
              body: JSON.stringify({
@@ -1102,9 +1136,15 @@ summary:focus-visible {
                problem_type: 'booking_issue',
                user_claim: q,
                evidence_text: bkData.dispute_letter || q
-             })
+             }),
+             silent401: true
            });
-         } catch(e){}
+           if(!caseRes.ok){
+             c.insertAdjacentHTML('beforeend','<div class="mt-2 text-xs text-amber-600 dark:text-amber-400">Could not save this to Cases.</div>');
+           }
+         } catch(e){
+           c.insertAdjacentHTML('beforeend','<div class="mt-2 text-xs text-amber-600 dark:text-amber-400">Could not save this to Cases.</div>');
+         }
          return;
        }
      } catch(err) {

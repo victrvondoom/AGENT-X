@@ -50,7 +50,7 @@ def ingest_document(subject: str, title: str, text: str, workspace: str = "defau
                 "VALUES (%s, %s, %s, %s, %s) RETURNING id",
                 (workspace, subject, title, blob, source_kind),
             )
-            doc_id = cur.fetchone()[0]
+            doc_id = store.scalar(cur)
 
         graph = client.chat_json(EXTRACT_SYSTEM, f"Document about '{subject}':\n\n{text}")
         entities = graph.get("entities", []) or []
@@ -88,7 +88,7 @@ def ingest_document(subject: str, title: str, text: str, workspace: str = "defau
                     """,
                     (workspace, name, e.get("type"), desc, emb, doc_id, subject, source_kind),
                 )
-                name_to_id[name.lower()] = cur.fetchone()[0]
+                name_to_id[name.lower()] = store.scalar(cur)
 
         edge_n = 0
         for r in rels:

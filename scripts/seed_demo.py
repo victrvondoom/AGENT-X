@@ -132,11 +132,13 @@ def main():
                 (days, WS, subj),
             )
         c.execute("SELECT count(DISTINCT subject), count(*) FROM documents WHERE workspace=%s", (WS,))
-        subs, docs = c.fetchone()
+        result = c.fetchone()
+        assert result is not None
+        subs, docs = result
         c.execute("SELECT count(*) FROM nodes WHERE workspace=%s", (WS,))
-        nodes = c.fetchone()[0]
+        nodes = store.scalar(c)
         c.execute("SELECT count(*) FROM edges WHERE workspace=%s", (WS,))
-        edges = c.fetchone()[0]
+        edges = store.scalar(c)
     print(f"\nDone. {subs} subjects · {docs} documents · {nodes} graph nodes · {edges} relationships in '{WS}'.")
 
 

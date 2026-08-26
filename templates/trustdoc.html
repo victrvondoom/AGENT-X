@@ -162,8 +162,13 @@ async function upload(){
 
 async function loadDemo(){
   const r = await fetch('/api/doc/demo-job', {method:'POST'});
-  if(!r.ok){ $('upErr').innerHTML = '<div class="banner">demo endpoint unavailable</div>'; return; }
-  JOB = (await r.json()).job_id; await refresh(); show(1);
+  const d = await r.json();
+  if(!r.ok){
+    const det = typeof d.detail === 'string' ? d.detail : (d.detail?.detail || JSON.stringify(d.detail));
+    $('upErr').innerHTML = `<div class="banner">${esc(det)}</div>`;
+    return;
+  }
+  JOB = d.job_id; await refresh(); show(1);
 }
 
 async function refresh(){

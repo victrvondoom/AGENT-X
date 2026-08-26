@@ -40,6 +40,40 @@ FAMILIES = ("merchant", "booking", "payment", "subscription", "telecom",
             "email", "browser", "document")
 
 
+class ErrorCode:
+    """The operational-failure vocabulary — what KIND of not-ok this was, not just
+    that it wasn't ok. `outcome` above already distinguishes "the call worked and
+    the answer was no" from "the call didn't work"; `error_code` exists for the
+    second half, to say what a caller should DO about it rather than leaving that
+    to a free-text `message`.
+
+    Deliberately not one code per HTTP status: `execution/retry.py` only needs to
+    ask two questions — is this worth trying again, and if so, when — and that
+    collapses cleanly onto this set without a code per status.
+    """
+    AUTH_REQUIRED = "auth_required"
+    RATE_LIMITED = "rate_limited"
+    TIMEOUT = "timeout"
+    TOOL_UNAVAILABLE = "tool_unavailable"
+    INVALID_INPUT = "invalid_input"
+    PERMISSION_DENIED = "permission_denied"
+    EXTERNAL_REJECTED = "external_rejected"
+    CONFLICT = "conflict"
+    RETRYABLE = "retryable"            # transient, cause otherwise unclassified
+    NON_RETRYABLE = "non_retryable"    # permanent, cause otherwise unclassified
+    UNKNOWN_FAILURE = "unknown_failure"
+    REQUIRES_USER = "requires_user"
+
+
+ERROR_CODES = tuple(v for k, v in vars(ErrorCode).items() if not k.startswith("_"))
+
+# Codes a retry can plausibly fix. Everything else means retrying would either
+# repeat a mistake (INVALID_INPUT), ask again for something a person has to grant
+# (AUTH_REQUIRED, PERMISSION_DENIED, REQUIRES_USER), or restate a decision the
+# counterparty already made (EXTERNAL_REJECTED, NON_RETRYABLE, CONFLICT).
+RETRYABLE_CODES = (ErrorCode.RETRYABLE, ErrorCode.TIMEOUT, ErrorCode.RATE_LIMITED)
+
+
 @dataclass
 class ProviderResult:
     """What an external system actually said.
@@ -55,18 +89,42 @@ class ProviderResult:
     provider: str
     mode: str                          # sandbox | live
     external_ref: str | None = None
-    message: str = ""
+    message: str = ""                  # safe to show a user
     data: dict = field(default_factory=dict)
     evidence_text: str | None = None   # what to store as captured evidence
     evidence_kind: str | None = None
     responds_in_days: float | None = None   # when the counterparty says it will reply
     retryable: bool = False
+    error_code: str | None = None      # one of ErrorCode.* when ok is False
+    retry_after: float | None = None   # seconds; provider-supplied, overrides backoff
+    technical_detail: str | None = None  # exception text etc. — never shown to a user
+    request_id: str | None = None      # the provider's own correlation id, if it has one
+
+    def __post_init__(self):
+        # error_code is the source of truth for retryability once set — a caller
+        # that only checks `retryable` on an old-style result (no error_code) still
+        # gets the right answer, so the field can be adopted provider-by-provider
+        # rather than requiring every do_* method to be rewritten at once.
+        if self.error_code and not self.ok:
+            self.retryable = self.retryable or self.error_code in RETRYABLE_CODES
 
     def as_dict(self) -> dict:
         d = asdict(self)
         # Captured evidence can be large; the execution record links to the stored
         # evidence item rather than carrying a copy of it in the result JSON.
         d.pop("evidence_text", None)
+        return d
+
+    def user_dict(self) -> dict:
+        """The subset safe to hand to an API response or render in the UI.
+
+        `technical_detail` (raw exception text, provider internals) stays out —
+        it belongs in `as_dict()`'s output for the stored execution record, where
+        a developer reading the database can see it, never in a response a
+        consumer-facing client renders.
+        """
+        d = self.as_dict()
+        d.pop("technical_detail", None)
         return d
 
 

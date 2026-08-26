@@ -22,7 +22,7 @@ from dotenv import load_dotenv                       # noqa: E402
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # pyright: ignore[reportAttributeAccessIssue] -- guarded by hasattr above
 
 import psycopg                                       # noqa: E402
 from core.trust import audit                         # noqa: E402
@@ -62,7 +62,9 @@ def t_migrate():
     for stmt in sql.split(";"):
         if stmt.strip():
             with conn.cursor() as cur:
-                cur.execute(stmt)
+                # stmt comes from the bundled migration file, not user input; psycopg's
+                # stub wants a compile-time LiteralString, which a file read can never be.
+                cur.execute(stmt)  # pyright: ignore[reportCallIssue, reportArgumentType]
             n += 1
     print(f"          {n} statements applied", flush=True)
 
@@ -78,7 +80,9 @@ def t_job():
     with conn.cursor() as cur:
         cur.execute("INSERT INTO jobs (kind, doc_type, status) "
                     "VALUES ('document','invoice','EXTRACTING') RETURNING id::text")
-        JOB["id"] = cur.fetchone()[0]
+        row = cur.fetchone()
+        assert row is not None
+        JOB["id"] = row[0]
     print(f"          job {JOB['id']}", flush=True)
 
 
@@ -140,7 +144,9 @@ def t_tamper_consistent():
     with conn.cursor() as cur:
         cur.execute("SELECT prev_hash FROM audit_log WHERE job_id = %s AND seq = 1",
                     (JOB["id"],))
-        prev = cur.fetchone()[0]
+        row = cur.fetchone()
+        assert row is not None
+        prev = row[0]
         cur.execute("UPDATE audit_log SET detail = %s, content_hash = %s "
                     "WHERE job_id = %s AND seq = 1",
                     (json.dumps(forged), audit.compute_hash(prev, forged), JOB["id"]))

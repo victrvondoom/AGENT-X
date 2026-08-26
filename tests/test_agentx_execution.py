@@ -51,6 +51,7 @@ class TestGovernorIntegration:
     def test_low_autonomy_case_requires_authorization_before_sending(self, conn):
         low = case_mod.create(conn, description="test", autonomy_level=1)
         low = case_mod.update(conn, low["id"], confidence=0.9)
+        assert low is not None
         with pytest.raises(runner.NotAuthorized):
             runner.run(conn, case=low, action="request_refund",
                       params={"counterparty": "Kartly", "amount_minor": 1000,
@@ -226,6 +227,7 @@ class TestLedgerAccumulates:
         sp._post_refund(conn, "meridian", ticket, 12000)
         sp._post_refund(conn, "meridian", ticket, 6100)
         led = world.fetch(conn, "meridian", "payment", "RFND-TST-000001")
+        assert led is not None
         assert led["amount_minor"] == 18100
         assert len(led["postings"]) == 2
         assert ticket["amount_approved_minor"] == 18100
@@ -261,3 +263,147 @@ class TestPartialIsNotResolved:
                          capability=caps.get("refund_request"))
         v = runner.verify(conn, case=case, execution_id=rec["id"])
         assert v["verified"] == "verified"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# retry + idempotency
+#
+# Regression class: engine._finish_step() marks a plan step DONE only AFTER
+# runner.run() returns. A crash between the provider call succeeding and that
+# write left a step whose status was still PENDING but whose action had already
+# happened — and the next advance() would run it again. request_refund,
+# cancel and email are not safe to send twice.
+# ─────────────────────────────────────────────────────────────────────────────
+from agentx.execution.providers.base import ErrorCode, Provider, ProviderResult
+
+
+class _CountingProvider(Provider):
+    """Registered fresh per test (the autouse fixture clears the registry), and
+    served under a counterparty name no sandbox provider claims, so it is the
+    only match — `for_family()` would otherwise rank a named sandbox provider
+    (e.g. Kartly's) above a generic "*" one."""
+    id = "test:counting"
+    family = "merchant"
+    mode = "sandbox"
+    label = "Counting test provider"
+    serves = ("*",)
+
+    def __init__(self, fail_times: int = 0, error_code: str = ErrorCode.RETRYABLE):
+        self.calls = 0
+        self.fail_times = fail_times
+        self.error_code = error_code
+
+    def do_request_refund(self, p: dict) -> ProviderResult:
+        self.calls += 1
+        if self.calls <= self.fail_times:
+            return ProviderResult(False, "error", self.id, self.mode,
+                                  message="simulated transient failure",
+                                  error_code=self.error_code, retryable=True)
+        return ProviderResult(True, "accepted", self.id, self.mode,
+                              external_ref=f"REF-{self.calls}",
+                              message="accepted")
+
+
+class TestRetryIntegration:
+    def test_a_transient_failure_is_retried_and_succeeds(self, conn, case):
+        p = _CountingProvider(fail_times=2)
+        providers.register(p)
+        rec = runner.run(conn, case=case, action="request_refund",
+                         params={"counterparty": "Unclaimed Test Co",
+                                 "amount_minor": 1000, "currency": "GBP",
+                                 "case_id": case["id"]},
+                         step_id="st-retry-1", capability=caps.get("refund_request"))
+        assert rec["state"] == "COMPLETED"
+        assert rec["attempts"] == 3
+        assert p.calls == 3
+
+    def test_a_permanently_failing_provider_still_records_one_execution(self, conn, case):
+        p = _CountingProvider(fail_times=99)
+        providers.register(p)
+        rec = runner.run(conn, case=case, action="request_refund",
+                         params={"counterparty": "Unclaimed Test Co",
+                                 "amount_minor": 1000, "currency": "GBP",
+                                 "case_id": case["id"]},
+                         step_id="st-retry-2", capability=caps.get("refund_request"))
+        assert rec["state"] == "FAILED"
+        assert p.calls == 3           # default max_attempts, then it stops
+        assert len(runner.history(conn, case["id"])) == 1
+
+
+class TestIdempotency:
+    def test_a_second_run_with_the_same_step_id_does_not_call_the_provider_again(
+            self, conn, case):
+        p = _CountingProvider()
+        providers.register(p)
+        params = {"counterparty": "Unclaimed Test Co", "amount_minor": 1000,
+                  "currency": "GBP", "case_id": case["id"]}
+        first = runner.run(conn, case=case, action="request_refund", params=params,
+                           step_id="st-idem-1", capability=caps.get("refund_request"))
+        second = runner.run(conn, case=case, action="request_refund", params=params,
+                            step_id="st-idem-1", capability=caps.get("refund_request"))
+        assert p.calls == 1, "the second run() must be a replay, not a second send"
+        assert second.get("replayed") is True
+        assert second["external_ref"] == first["external_ref"]
+        assert len(runner.history(conn, case["id"])) == 1
+
+    def test_different_step_ids_are_independent_actions(self, conn, case):
+        p = _CountingProvider()
+        providers.register(p)
+        params = {"counterparty": "Unclaimed Test Co", "amount_minor": 1000,
+                  "currency": "GBP", "case_id": case["id"]}
+        runner.run(conn, case=case, action="request_refund", params=params,
+                  step_id="st-a", capability=caps.get("refund_request"))
+        runner.run(conn, case=case, action="request_refund", params=params,
+                  step_id="st-b", capability=caps.get("refund_request"))
+        assert p.calls == 2
+
+    def test_an_interrupted_write_action_is_not_silently_retried(self, conn, case):
+        """Simulates a crash: an execution row left in STARTED with no COMPLETED/
+        FAILED written — the provider may or may not have actually sent anything.
+        The next run() for the same step must refuse to call the provider again."""
+        p = _CountingProvider()
+        providers.register(p)
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO executions (id, case_id, step_id, action, provider,"
+                " provider_mode, state, verified, requested_at, started_at)"
+                " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (ids.new("ex"), case["id"], "st-crashed", "request_refund",
+                 p.id, p.mode, "STARTED", "unverified", ids.now(), ids.now()))
+        rec = runner.run(conn, case=case, action="request_refund",
+                         params={"counterparty": "Unclaimed Test Co",
+                                 "amount_minor": 1000, "currency": "GBP",
+                                 "case_id": case["id"]},
+                         step_id="st-crashed", capability=caps.get("refund_request"))
+        assert p.calls == 0, "must not have called the provider on an uncertain prior attempt"
+        assert rec["state"] == "FAILED"
+        assert rec["error_code"] == ErrorCode.REQUIRES_USER
+
+    def test_an_interrupted_read_only_action_is_safe_to_retry(self, conn, case):
+        """retrieve/inspect/verify have no external side effect, so a STARTED-but-
+        unfinished prior attempt does not block running it again."""
+        class _Retriever(Provider):
+            id = "test:retriever"
+            family = "merchant"
+            mode = "sandbox"
+            label = "test"
+            serves = ("*",)
+            calls = 0
+            def do_retrieve(self, p):
+                type(self).calls += 1
+                return ProviderResult(True, "done", self.id, self.mode,
+                                      evidence_text="fetched")
+        providers.register(_Retriever())
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO executions (id, case_id, step_id, action, provider,"
+                " provider_mode, state, verified, requested_at, started_at)"
+                " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (ids.new("ex"), case["id"], "st-read-crashed", "retrieve",
+                 "test:retriever", "sandbox", "STARTED", "unverified", ids.now(), ids.now()))
+        rec = runner.run(conn, case=case, action="retrieve",
+                         params={"counterparty": "Unclaimed Test Co",
+                                 "case_id": case["id"]},
+                         step_id="st-read-crashed")
+        assert _Retriever.calls == 1
+        assert rec["state"] == "COMPLETED"

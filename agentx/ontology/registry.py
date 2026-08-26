@@ -33,7 +33,7 @@ class DefinitionError(ValueError):
     """A problem definition is malformed. Names the file and the offending field."""
 
 
-def _require(cond: bool, path: str, msg: str) -> None:
+def _require(cond: object, path: str, msg: str) -> None:
     if not cond:
         raise DefinitionError(f"{os.path.basename(path)}: {msg}")
 
@@ -42,12 +42,14 @@ def _parse_one(raw: dict, path: str) -> ProblemDefinition:
     _require(isinstance(raw, dict), path, "top level must be a mapping")
     pt = raw.get("problem_type")
     _require(bool(pt), path, "missing `problem_type`")
+    assert pt is not None
     _require(re.fullmatch(r"[a-z][a-z0-9_]*", pt or ""), path,
              f"problem_type {pt!r} must be lower_snake_case")
 
     domain = raw.get("domain")
     _require(domain in DOMAINS, path,
              f"unknown domain {domain!r} — must be one of {sorted(DOMAINS)}")
+    assert domain is not None
 
     ev: list[EvidenceRequirement] = []
     for e in raw.get("required_evidence") or []:

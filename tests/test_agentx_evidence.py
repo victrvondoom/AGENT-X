@@ -32,6 +32,7 @@ def case(conn):
 class TestNormalize:
     def test_money_reads_symbol_and_amount(self):
         m = normalize.money("Total: ₹2,399.00")
+        assert m is not None
         assert m["minor"] == 239900
         assert m["currency"] == "INR"
 
@@ -42,20 +43,24 @@ class TestNormalize:
 
     def test_zero_decimal_currency_does_not_multiply_by_100(self):
         m = normalize.money("¥5000")
+        assert m is not None
         assert m["currency"] == "JPY"
         assert m["minor"] == 5000
 
     def test_ambiguous_numeric_date_is_flagged(self):
         d = normalize.date("Date: 03/04/2026")
+        assert d is not None
         assert d["ambiguous"] is True
 
     def test_unambiguous_numeric_date_not_flagged(self):
         d = normalize.date("Date: 25/03/2026")
+        assert d is not None
         assert d["ambiguous"] is False
         assert d["iso"] == "2026-03-25"
 
     def test_iso_date_parses_directly(self):
         d = normalize.date("2026-08-02")
+        assert d is not None
         assert d["iso"] == "2026-08-02"
 
     def test_reference_extraction_skips_generic_words(self):
@@ -130,6 +135,7 @@ class TestFactGraph:
             extract.FactCandidate(predicate="charge.amount", value_text="100",
                                   value_num=100, confidence=0.7)])
         claim = egraph.build_claim(conn, case["id"], "charge.amount", "test claim")
+        assert claim is not None  # two facts were just added for this predicate
         assert claim.confidence > 0.7  # two sources agreeing beats either alone
         assert claim.confidence < 1.0  # never certain
 

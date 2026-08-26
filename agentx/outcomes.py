@@ -213,7 +213,8 @@ def _elapsed_days(conn, case: dict) -> float | None:
     # inherit every day advanced before it existed.
     opened_at_offset = float(case.get("opened_offset_days") or 0.0)
     if not spans:
-        return max(ids.days_between(started, ids.now()) - opened_at_offset, 0.0)
+        elapsed = ids.days_between(started, ids.now())
+        return max(elapsed - opened_at_offset, 0.0) if elapsed is not None else None
     # `max`, not the closing stamp: a case can be closed by a sweep whose `as_of`
     # is the moved clock, or by a user action at wall-clock time after the
     # sandbox has run ahead. The furthest point is the one the case reached.
@@ -250,7 +251,7 @@ def prior_for(conn, *, workspace: str = "default", counterparty: str | None,
     for r in resolved:
         if r["strategy"]:
             strategies[r["strategy"]] = strategies.get(r["strategy"], 0) + 1
-    best_strategy = max(strategies, key=strategies.get) if strategies else None
+    best_strategy = max(strategies, key=lambda k: strategies[k]) if strategies else None
 
     rights: dict[str, int] = {}
     for r in resolved:
@@ -273,7 +274,7 @@ def prior_for(conn, *, workspace: str = "default", counterparty: str | None,
                            if chase_counts else None),
         "typical_days": round(sum(day_counts) / len(day_counts), 1) if day_counts else None,
         "best_strategy": best_strategy,
-        "rights_that_worked": sorted(rights, key=rights.get, reverse=True)[:3],
+        "rights_that_worked": sorted(rights, key=lambda k: rights[k], reverse=True)[:3],
         "basis": [r["case_id"] for r in rows],      # auditable provenance
         "note": _summarise(n, resolved, needed_escalation, best_strategy),
     }

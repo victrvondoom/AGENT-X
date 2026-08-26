@@ -23,18 +23,23 @@ def check(name, fn):
 def vec(n=384, seed=0.01):
     return "[" + ",".join(f"{(seed*(i+1))%1:.4f}" for i in range(n)) + "]"
 
+def scalar(c):
+    row = c.fetchone()
+    assert row is not None
+    return row[0]
+
 print("Connecting to CockroachDB Basic...")
 conn = psycopg.connect(URL, autocommit=True)
 cur = conn.cursor()
 print("Connected.\n--- SMOKE TESTS ---")
 
-check("0. version", lambda: (cur.execute("SELECT version()"), cur.fetchone()[0])[1])
+check("0. version", lambda: (cur.execute("SELECT version()"), scalar(cur))[1])
 check("0b. db/user", lambda: (cur.execute("SELECT current_database(), current_user"), cur.fetchone())[1])
 
 # 1. vector index feature flag
 def vec_setting():
     cur.execute("SHOW CLUSTER SETTING feature.vector_index.enabled")
-    return cur.fetchone()[0]
+    return scalar(cur)
 check("1. feature.vector_index.enabled (show)", vec_setting)
 
 # 2. create VECTOR table + cosine vector index
@@ -63,7 +68,7 @@ check("4. EXPLAIN ANN (index vs scan)", explain_ann)
 # 5. AS OF SYSTEM TIME
 def aost():
     cur.execute("SELECT count(*) FROM _smoke_vec AS OF SYSTEM TIME '-5s'")
-    return f"AOST read ok, count={cur.fetchone()[0]}"
+    return f"AOST read ok, count={scalar(cur)}"
 check("5. AS OF SYSTEM TIME", aost)
 
 # 6. GC window (how far back AOST can read)
@@ -83,7 +88,7 @@ check("6. GC window (gc.ttlseconds)", gc_window)
 # 7. recursive CTE (blast-radius graph walk)
 def rec_cte():
     cur.execute("WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM t WHERE n < 5) SELECT count(*) FROM t")
-    return f"recursive CTE depth ok, count={cur.fetchone()[0]}"
+    return f"recursive CTE depth ok, count={scalar(cur)}"
 check("7. recursive CTE", rec_cte)
 
 # 8. row-level TTL
@@ -100,7 +105,7 @@ def upsert():
     cur.execute("INSERT INTO _smoke_up (name) VALUES ('x')")
     cur.execute("INSERT INTO _smoke_up (name) VALUES ('x') ON CONFLICT (name) DO UPDATE SET hits = _smoke_up.hits + 1")
     cur.execute("SELECT hits FROM _smoke_up WHERE name='x'")
-    return f"upsert ok, hits={cur.fetchone()[0]}"
+    return f"upsert ok, hits={scalar(cur)}"
 check("9. INSERT ON CONFLICT (dedup)", upsert)
 
 # cleanup

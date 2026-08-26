@@ -25,7 +25,7 @@ from dotenv import load_dotenv                            # noqa: E402
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # pyright: ignore[reportAttributeAccessIssue] -- guarded by hasattr above
 
 import contextlib, psycopg                                # noqa: E402
 
@@ -40,6 +40,7 @@ from db import store                                      # noqa: E402
 
 @contextlib.contextmanager
 def _direct():
+    assert DSN is not None, "checked at module load — see the SystemExit above"
     c = psycopg.connect(DSN, autocommit=True, connect_timeout=10)
     try:
         yield c
@@ -197,7 +198,8 @@ def t_record_retained():
     """The compliance record itself must SURVIVE -- it is the evidence of lawful handling."""
     with conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM jobs WHERE id = %s", (S["job"],))
-        assert cur.fetchone()[0] == 1, "the compliance job was destroyed"
+        row = cur.fetchone()
+        assert row is not None and row[0] == 1, "the compliance job was destroyed"
     ch = audit.chain(conn, S["job"])
     assert any(e["step"] == "redacted" for e in ch), "the redaction was not audited"
     print(f"          job retained, {len(ch)} chain rows, redaction recorded", flush=True)

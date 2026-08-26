@@ -1,0 +1,32 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# The fallback for a problem that matches no specific catalogue entry.
+#
+# Deliberately carries no `phrases`, `patterns`, `group_triggers`, or
+# `ambiguity_group` — understanding.hypotheses() skips any definition that
+# scores zero on lexical/domain/pulled-in signal (see the `continue` in its
+# scoring loop), so this entry can NEVER be selected by the normal classifier
+# and never dilutes another definition's posterior. It is reached only by
+# engine.understand() explicitly asking for it, by name, when no hypothesis
+# scored at all — never by keyword match.
+# ═══════════════════════════════════════════════════════════════════════════
+
+problem_type: general_consumer_problem
+domain: general
+label: General consumer problem
+summary: >
+  A problem the catalogue has no specific entry for. Agent X still opens a
+  case, still looks at whatever evidence is available, and still drafts a
+  general request to the counterparty rather than refusing outright — but
+  claims nothing it cannot support, and everything it sends still needs
+  authorisation.
+prior: 0.02
+required_entities: []
+optional_entities: [merchant, provider, order, payment, account, booking,
+                    subscription, amount, date, person, location, case_ref]
+required_evidence:
+  - kind: statement_note
+    why: The user's own account of what happened is the only evidence every case has.
+    critical: false
+resolution_strategies: [explanation]
+risk: low
+default_autonomy: 1

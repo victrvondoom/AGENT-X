@@ -304,6 +304,7 @@ def spine_data(limit: int = 24):
     kind or the picture would show two ledgers side by side.
     """
     from core.trust import audit as _audit
+    from db import store
     with _conn() as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT id::text, kind, status FROM jobs "
@@ -317,7 +318,7 @@ def spine_data(limit: int = 24):
             v = _audit.verify_chain(conn, jid)
             cur.execute("SELECT count(*) FROM audit_log WHERE job_id=%s AND sealed",
                         (jid,))
-            shredded = cur.fetchone()[0] > 0
+            shredded = store.scalar(cur) > 0
             blocks.append({"job_id": jid, "pipeline": kind, "status": status,
                            "rows": v.get("rows", 0), "head": v.get("head"),
                            "ok": v.get("ok"), "shredded": shredded})

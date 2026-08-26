@@ -159,6 +159,7 @@ def compose(*, case: dict, definition: ProblemDefinition, remedy: str,
             # becomes a question rather than a step that would pretend to fetch it.
             continue
         cap = caps.get(cap_id)
+        assert cap is not None, f"{cap_id} is a declared capability"
         s = add(Step(key=f"retrieve_{miss['kind']}", action="retrieve",
                      title=f"Retrieve the {miss['kind'].replace('_', ' ')} from {counterparty or 'the provider'}",
                      capability=cap_id,
@@ -213,6 +214,7 @@ def compose(*, case: dict, definition: ProblemDefinition, remedy: str,
         return plan
 
     cap = caps.get(act_cap)
+    assert cap is not None, f"{act_cap} is a declared capability"
     sla = _sla_days(counterparty)
     # Experience adjusts the WAIT, never the permission. `is not None`, not
     # truthiness: a counterparty that has always answered same-day gives
@@ -282,6 +284,8 @@ def compose(*, case: dict, definition: ProblemDefinition, remedy: str,
     ladder = [r for r in definition.escalation if r in LADDER] or ["merchant_support"]
     if "escalation" in available and len(ladder) > 0:
         target = ladder[1] if len(ladder) > 1 else ladder[0]
+        escalation_cap = caps.get("escalation")
+        assert escalation_cap is not None, "escalation is a declared capability"
         esc = add(Step(key="escalate", action="escalate",
                        title=f"Escalate to {target.replace('_', ' ')}",
                        capability="escalation",
@@ -292,7 +296,7 @@ def compose(*, case: dict, definition: ProblemDefinition, remedy: str,
                        expected={"outcome": "accepted"},
                        failure_modes=["escalation refused", "outside their remit"],
                        retry={"max": 1, "backoff_hours": 48},
-                       risk="high", required_level=caps.get("escalation").required_level))
+                       risk="high", required_level=escalation_cap.required_level))
         act.on_failure = esc.key
         if chase is not None:
             chase.on_failure = esc.key
@@ -494,8 +498,8 @@ def validate(plan: Plan, *, definition: ProblemDefinition | None = None,
         if s.action == "escalate":
             if not s.prerequisites:
                 errors.append(f"step {s.key!r} escalates without a prior attempt")
-            elif not any(A.is_external(plan.step(p).action)
-                         for p in s.prerequisites if plan.step(p)):
+            elif not any(A.is_external(step.action)
+                         for step in (plan.step(p) for p in s.prerequisites) if step):
                 warnings.append(f"step {s.key!r} escalates before anything was actually "
                                 f"sent to the counterparty")
 
@@ -575,7 +579,7 @@ def propose_with_llm(plan: Plan, *, definition: ProblemDefinition,
                        "after": s.prerequisites, "on_failure": s.on_failure}
                       for s in plan.steps],
         }
-        got = client.chat_json(_PROPOSE_SYSTEM, store.jdump(payload))
+        got = client.chat_json(_PROPOSE_SYSTEM, store.jdump(payload), task="plan")
     except Exception as e:
         return plan, f"model unavailable ({type(e).__name__}); composed plan stands"
 
@@ -589,6 +593,8 @@ def propose_with_llm(plan: Plan, *, definition: ProblemDefinition,
         if not isinstance(r, dict):
             continue
         key = r.get("key")
+        if not isinstance(key, str):
+            continue                # a step with no usable key cannot be matched
         base = by_key.get(key)
         if base is None:
             continue                # a step nobody composed has no capability behind it

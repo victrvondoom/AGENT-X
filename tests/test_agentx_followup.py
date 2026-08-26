@@ -103,9 +103,11 @@ class TestChaseAndEscalate:
     def test_low_autonomy_escalation_asks_rather_than_acts(self, conn):
         low = case_mod.create(conn, description="test", autonomy_level=2)
         low = case_mod.update(conn, low["id"], confidence=0.9)
+        assert low is not None
         _walk_to_waiting(conn, low["id"])
         followup._plan_escalation(conn, low, ids.now(), why="test reason")
         c = case_mod.get(conn, low["id"])
+        assert c is not None
         assert c["state"] == "ACTION_REQUIRED"
         # An authorization request was queued for escalate, not an actual escalation
         with conn.cursor() as cur:
@@ -117,6 +119,7 @@ class TestChaseAndEscalate:
     def test_high_autonomy_escalation_schedules_it_automatically(self, conn):
         high = case_mod.create(conn, description="test", autonomy_level=4)
         high = case_mod.update(conn, high["id"], confidence=0.9)
+        assert high is not None
         _walk_to_waiting(conn, high["id"])
         followup._plan_escalation(conn, high, ids.now(), why="test reason")
         rows = case_mod.followups(conn, high["id"])

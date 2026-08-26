@@ -90,6 +90,7 @@ class TestUnderstanding:
             "Amazon charged me twice for something I only received once.",
             use_llm=False)
         assert not u.ambiguous
+        assert u.top is not None
         assert u.top.problem_type == "duplicate_charge"
 
     def test_unrelated_narrative_carries_high_residual_mass(self):
@@ -149,16 +150,29 @@ class TestUnderstanding:
         merchants = [e["value"] for e in ents if e["kind"] == "merchant"]
         assert merchants and merchants[0] == "SkyLink Airways"
 
+    def test_appointment_cancelled_classifies_correctly(self):
+        """Regression against a stale audit claim: `appointment_cancelled`
+        (domain: appointments) already exists and works — an earlier report
+        wrongly said the appointments domain had zero problem definitions."""
+        u = understanding.understand(
+            "The plumber never turned up for my appointment and rescheduled "
+            "without telling me", use_llm=False)
+        assert u.top is not None
+        assert u.top.problem_type == "appointment_cancelled"
+        assert u.top.domain == "appointments"
+
 
 class TestPolicyEvaluation:
     def test_absent_fact_produces_unknown_not_a_guess(self):
         d = registry.get("flight_delay_compensation")
+        assert d is not None
         findings = policy.analyse(d, {}, jurisdiction=None)
         eu = next(f for f in findings if f.policy.id == "eu261")
         assert eu.applies == "unknown"
 
     def test_condition_met_produces_yes_with_entitlement(self):
         d = registry.get("flight_delay_compensation")
+        assert d is not None
         facts = {"flight.delay_minutes": 240, "flight.distance_km": 1850,
                  "flight.disruption_reason": "technical"}
         findings = policy.analyse(d, facts, jurisdiction="EU")
@@ -168,6 +182,7 @@ class TestPolicyEvaluation:
 
     def test_extraordinary_circumstance_defeats_eu261(self):
         d = registry.get("flight_delay_compensation")
+        assert d is not None
         facts = {"flight.delay_minutes": 240, "flight.distance_km": 1850,
                  "flight.disruption_reason": "weather"}
         findings = policy.analyse(d, facts, jurisdiction="EU")
@@ -176,6 +191,7 @@ class TestPolicyEvaluation:
 
     def test_wrong_jurisdiction_policy_is_no_not_unknown(self):
         d = registry.get("flight_delay_compensation")
+        assert d is not None
         facts = {"flight.delay_minutes": 240, "flight.distance_km": 1850}
         findings = policy.analyse(d, facts, jurisdiction="US")
         eu = next(f for f in findings if f.policy.id == "eu261")
@@ -183,12 +199,14 @@ class TestPolicyEvaluation:
 
     def test_unknown_jurisdiction_makes_regional_policies_unknown(self):
         d = registry.get("duplicate_charge")
+        assert d is not None
         findings = policy.analyse(d, {"charge.amount": 500}, jurisdiction=None)
         s75 = next(f for f in findings if f.policy.id == "uk_cca_s75")
         assert s75.applies == "unknown"
 
     def test_universal_policy_ignores_jurisdiction(self):
         d = registry.get("duplicate_charge")
+        assert d is not None
         findings = policy.analyse(d, {}, jurisdiction=None)
         cb = next(f for f in findings if f.policy.id == "card_scheme_chargeback")
         assert cb.applies != "no"  # unknown (incident.days_ago absent) but not rejected on jurisdiction

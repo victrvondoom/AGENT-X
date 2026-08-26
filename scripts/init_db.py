@@ -70,13 +70,13 @@ with store.connect() as conn:
     print(f"• schema applied ({n} statements)")
 
     # 1) envelope encryption roundtrip
-    blob = store.encrypt_for(conn, "_selftest_alice", "Alice bank account 1234, sort 55-66")
-    assert store.decrypt_for(conn, "_selftest_alice", blob) == "Alice bank account 1234, sort 55-66"
+    blob = store.encrypt_for(conn, "default", "_selftest_alice", "Alice bank account 1234, sort 55-66")
+    assert store.decrypt_for(conn, "default", "_selftest_alice", blob) == "Alice bank account 1234, sort 55-66"
     print("• encrypt/decrypt roundtrip OK")
 
     # 2) crypto-shred — content is unrecoverable after the key is destroyed
-    store.crypto_shred(conn, "_selftest_alice")
-    assert store.decrypt_for(conn, "_selftest_alice", blob) is None
+    store.crypto_shred(conn, "default", "_selftest_alice")
+    assert store.decrypt_for(conn, "default", "_selftest_alice", blob) is None
     print("• crypto-shred OK (ciphertext unrecoverable after key destroyed)")
 
     # 3) vector insert + cosine ANN
@@ -88,7 +88,7 @@ with store.connect() as conn:
             ("_selftest_node", "test", "a self-test node", vec),
         )
         cur.execute("SELECT name FROM nodes ORDER BY embedding <=> %s LIMIT 1", (vec,))
-        assert cur.fetchone()[0] == "_selftest_node"
+        assert store.scalar(cur) == "_selftest_node"
     print("• vector insert + cosine ANN OK")
 
     # 4) logical timestamp (AOST anchor)

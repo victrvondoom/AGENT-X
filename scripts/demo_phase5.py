@@ -25,7 +25,7 @@ from dotenv import load_dotenv                              # noqa: E402
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # pyright: ignore[reportAttributeAccessIssue] -- guarded by hasattr above
 
 import psycopg                                              # noqa: E402
 from core.trust import audit, certificate                   # noqa: E402
@@ -207,7 +207,9 @@ check("ATTACK -- forge and re-sign with another key -> chain binding REJECTS",
 def t_tamper_db():
     with conn.cursor() as cur:
         cur.execute("SELECT detail FROM audit_log WHERE job_id=%s AND seq=1", (S["job"],))
-        orig = cur.fetchone()[0]
+        row = cur.fetchone()
+        assert row is not None
+        orig = row[0]
         # edit BOTH columns, which is what a competent tamperer would do
         cur.execute("UPDATE audit_log SET detail=%s, detail_canonical=%s "
                     "WHERE job_id=%s AND seq=1",
@@ -264,7 +266,9 @@ def t_judge_sql():
             )
             SELECT count(*), count(*) FILTER (WHERE rec <> content_hash) FROM walk
         """, (S["job"], S["job"]))
-        rows, bad = cur.fetchone()
+        result = cur.fetchone()
+        assert result is not None
+        rows, bad = result
     S["sql_ok"] = (bad == 0 and rows > 0)
     print(f"          SQL re-derived {rows} hashes independently, {bad} mismatched",
           flush=True)

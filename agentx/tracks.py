@@ -97,6 +97,8 @@ class Track:
                     state = check()
                 except Exception:
                     return UNAVAILABLE
+                if not isinstance(state, dict):
+                    return UNAVAILABLE
                 if state.get("available"):
                     return LIVE
                 # It is real code that is simply not connected here. When it is
@@ -117,7 +119,10 @@ class Track:
         try:
             module = importlib.import_module(self.module)
             check = getattr(module, "available", None)
-            return check().get("detail") if callable(check) else None
+            if not callable(check):
+                return None
+            state = check()
+            return state.get("detail") if isinstance(state, dict) else None
         except Exception:
             return None
 

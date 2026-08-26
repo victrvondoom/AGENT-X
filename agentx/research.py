@@ -168,7 +168,7 @@ def summary(passages: list[dict], checks: list | None = None) -> dict:
         counts[result.verdict] = counts.get(result.verdict, 0) + 1
     return {
         "sources": len(passages),
-        "sectors": sorted({p.get("sector") for p in passages if p.get("sector")}),
+        "sectors": sorted({s for p in passages if (s := p.get("sector"))}),
         "authorities": sorted({p["authority"] for p in passages if p.get("authority")}),
         "verdicts": counts,
         "conflicting": counts.get("conflicting", 0),

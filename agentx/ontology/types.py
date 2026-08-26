@@ -48,6 +48,7 @@ DOMAINS: dict[str, str] = {
     "services":      "tradespeople, repairs, professional services",
     "appointments":  "booked slots for a service, medical or otherwise",
     "billing":       "the invoice itself — clarity, accuracy, adjustment",
+    "general":       "a consumer problem that does not fit a more specific domain",
 }
 
 # ── entity kinds ──────────────────────────────────────────────────────────

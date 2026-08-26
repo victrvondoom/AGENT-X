@@ -62,7 +62,14 @@ def assess(*, definition: ProblemDefinition, findings: list[PolicyFinding],
         backing = supported.get(kind, [])
         blocked: list[str] = []
 
-        if not backing:
+        # `explanation` is the one remedy the planner already treats as always valid
+        # (planner.validate() accepts it regardless of a definition's declared
+        # strategies) — but only when the definition cites no policy at all, i.e.
+        # there is no rule it COULD be backed by. A definition that does cite
+        # policies (every domain-specific one) is unaffected: explanation there
+        # still needs backing exactly as before.
+        no_rule_to_check = kind == "explanation" and not definition.policies
+        if not backing and not no_rule_to_check:
             if unknown_policies:
                 blocked.append(
                     "no right has been established yet — "

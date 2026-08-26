@@ -435,6 +435,7 @@ function countUp(el, to){
 }
 
 async function loadLive(){
+  let engine = null;
   try{
     const h = await (await fetch('/api/health')).json();
     document.getElementById('live').textContent = h.ok ? `service ${h.service} · online` : 'service degraded';
@@ -444,7 +445,7 @@ async function loadLive(){
     // claims it has not checked.
     try{
       const ax = await (await fetch('/api/agentx/health')).json();
-      const engine = ax.engine && ax.engine.engine;
+      engine = ax.engine && ax.engine.engine;
       const el = document.getElementById('engineLine');
       if(el) el.textContent = engine === 'cockroachdb'
         ? 'Running on CockroachDB'
@@ -462,7 +463,9 @@ async function loadLive(){
     ]);
     const vals = { subjects:(s||[]).length, nodes:(g.nodes||[]).length, edges:(g.edges||[]).length, events:(e||[]).length };
     document.querySelectorAll('[data-k]').forEach(el=> countUp(el, vals[el.dataset.k]||0));
-    document.getElementById('mcap').textContent = 'read live from CockroachDB just now — not a stored figure.';
+    document.getElementById('mcap').textContent = engine === 'cockroachdb'
+      ? 'read live from CockroachDB just now — not a stored figure.'
+      : 'read live from the local engine just now — not a stored figure.';
   }catch{ document.getElementById('mcap').textContent = 'live counts unavailable (is the database attached?).'; }
 }
 

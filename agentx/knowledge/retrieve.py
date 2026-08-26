@@ -149,7 +149,7 @@ def search(query: str, *, sectors: tuple[str, ...] = (), limit: int = 4,
             for t in q_unique}
     available_mass = sum(idfs.values())
 
-    scored: list[tuple[float, int, list[str], float]] = []
+    scored: list[tuple[float, int, list[str], float, float]] = []
     for i, passage in enumerate(ps):
         if allowed is not None and passage.sector not in allowed:
             continue

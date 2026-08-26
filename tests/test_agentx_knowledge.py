@@ -313,10 +313,15 @@ def test_one_document_is_not_counted_as_several_sources(conn):
 def test_an_unclassifiable_case_still_gets_research(conn):
     """The case research helps most: Agent X's ontology has no housing problem
     type, so there is no entitlement to compute — but the complaint route exists
-    and the user should still be told it."""
+    and the user should still be told it.
+
+    The case itself no longer stalls at problem_type=None (see
+    tests/test_agentx_general_fallback.py — it falls back to
+    general_consumer_problem and still reaches a plan), but research must still
+    reach the narrative regardless of which path classification took."""
     snap = _investigated(conn, "My landlord is refusing to return my security "
                                "deposit after I moved out of the flat.")
-    assert snap["case"]["problem_type"] is None
+    assert snap["case"]["problem_type"] == "general_consumer_problem"
     assert snap["research"]["sources"], "an unclassified case retrieved nothing"
 
 

@@ -82,7 +82,7 @@ def _why_better(a: dict, b: dict) -> str:
             + (", and is no worse on anything else" if same and better else ""))
 
 
-def analyse(remedies: list[dict]) -> dict:
+def analyse(remedies: list[dict] | None) -> dict:
     """Split remedies into the ones worth considering and the ones that are not.
 
     Only remedies that are actually open are compared. A blocked remedy is not a

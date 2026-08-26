@@ -123,6 +123,9 @@ def open_detail(conn, row: dict) -> dict:
         return out
 
     subject, workspace = row.get("seal_subject"), row.get("seal_workspace") or "default"
+    if subject is None:
+        out["_unreadable"] = True
+        return out
     try:
         plain = store.decrypt_for(conn, workspace, subject,
                                   base64.b64decode(sealed_b64))

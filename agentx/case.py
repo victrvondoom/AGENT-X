@@ -264,6 +264,8 @@ def transition(conn, case_id: str, to_state: str, *, why: str,
         try:
             from agentx import outcomes
             closed = get(conn, case_id)
+            if closed is None:
+                raise ValueError(f"case {case_id} not found")
             rec = outcomes.record(conn, closed, outcome={
                 "RESOLVED": "resolved", "CLOSED_UNRESOLVED": "unresolved",
                 "WITHDRAWN": "withdrawn"}[to_state])
@@ -276,7 +278,10 @@ def transition(conn, case_id: str, to_state: str, *, why: str,
                                         "contains no personal data, so it survives erasure"})
         except Exception:
             pass
-    return get(conn, case_id)
+    updated = get(conn, case_id)
+    if updated is None:
+        raise ValueError(f"case {case_id} not found")
+    return updated
 
 
 def set_autonomy(conn, case_id: str, level: int, *, by: str = "user") -> dict:
@@ -294,7 +299,10 @@ def set_autonomy(conn, case_id: str, level: int, *, by: str = "user") -> dict:
     chain.append(conn, case_id, "case.autonomy", "HUMAN",
                  {"level": level, "because": f"set by {by}",
                   "policy_snapshot": governor.policy_snapshot()})
-    return get(conn, case_id)
+    updated = get(conn, case_id)
+    if updated is None:
+        raise ValueError(f"case {case_id} not found")
+    return updated
 
 
 # ─────────────────────────────────────────────────────────────────────────────

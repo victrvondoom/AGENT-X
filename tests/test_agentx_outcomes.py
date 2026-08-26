@@ -45,6 +45,7 @@ class TestRecording:
     def test_recording_is_idempotent(self, conn):
         r = _run(conn)[0]
         c = case_mod.get(conn, r["case_id"])
+        assert c is not None
         assert outcomes.record(conn, c, outcome="resolved") is None
         assert len(outcomes.history(conn)) == 1
 

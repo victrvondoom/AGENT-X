@@ -144,7 +144,7 @@ def forget(subject: str, workspace: str = "default") -> dict:
         # empirically verified (0 rows vs 1). This ordering is what makes the proof real.
         with conn.cursor() as cur:
             cur.execute("SELECT cluster_logical_timestamp()::string")
-            t_before = cur.fetchone()[0]
+            t_before = store.scalar(cur)
 
         with conn.transaction():
             with conn.cursor() as cur:
@@ -177,7 +177,7 @@ def forget(subject: str, workspace: str = "default") -> dict:
                     """,
                     (workspace, subject),
                 )
-                receipt["authoritative_retained"] = cur.fetchone()[0]
+                receipt["authoritative_retained"] = store.scalar(cur)
 
                 if exclusive:
                     cur.execute(
@@ -237,7 +237,7 @@ def forget(subject: str, workspace: str = "default") -> dict:
                     (workspace, subject, salt, t_before, receipt["docs"], receipt["nodes"],
                      receipt["edges"], receipt["invalidated"], receipt["authoritative_retained"]),
                 )
-                event_id = cur.fetchone()[0]
+                event_id = store.scalar(cur)
 
                 cur.execute(
                     "INSERT INTO timeline (workspace, kind, subject, detail) VALUES (%s, 'forget', %s, %s)",
@@ -268,9 +268,13 @@ def prior_state(subject: str, t_before: str, workspace: str = "default") -> list
     if not re.fullmatch(r"-?\d+(\.\d+)?", str(t_before)):
         raise ValueError("invalid AS OF SYSTEM TIME anchor")
     with store.connect() as conn, conn.cursor() as cur:
+        # t_before is regex-validated above as a bare number, not passed through as
+        # arbitrary input — CockroachDB requires AS OF SYSTEM TIME to be a literal, so
+        # it cannot be a bind parameter. psycopg's stub wants a compile-time
+        # LiteralString here, which no runtime-checked value can ever satisfy.
         cur.execute(
             f"SELECT name, type, description FROM nodes AS OF SYSTEM TIME {t_before} "
-            "WHERE workspace = %s AND %s::STRING = ANY(subjects)",
+            "WHERE workspace = %s AND %s::STRING = ANY(subjects)",  # pyright: ignore[reportArgumentType]
             (workspace, subject),
         )
         return [{"name": r[0], "type": r[1], "description": r[2]} for r in cur.fetchall()]
@@ -284,9 +288,9 @@ def verify_gone(subject: str, workspace: str = "default") -> dict:
             "AND deleted_at IS NULL",
             (workspace, subject),
         )
-        live_nodes = cur.fetchone()[0]
+        live_nodes = store.scalar(cur)
         cur.execute("SELECT count(*) FROM documents WHERE workspace = %s AND subject = %s", (workspace, subject))
-        live_docs = cur.fetchone()[0]
+        live_docs = store.scalar(cur)
         cur.execute(
             "SELECT wrapped_dek IS NULL, destroyed_at IS NOT NULL FROM subject_keys "
             "WHERE workspace = %s AND subject = %s",
@@ -308,7 +312,7 @@ def verify_gone(subject: str, workspace: str = "default") -> dict:
                 ") t WHERE %s::STRING = ANY(subjects)",
                 (workspace, qv, subject),
             )
-            vector_hits = cur.fetchone()[0]
+            vector_hits = store.scalar(cur)
         except Exception:
             vector_hits = None
     return {"live_exclusive_nodes": live_nodes, "live_docs": live_docs,

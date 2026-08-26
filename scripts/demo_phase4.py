@@ -20,7 +20,7 @@ from dotenv import load_dotenv                          # noqa: E402
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # pyright: ignore[reportAttributeAccessIssue] -- guarded by hasattr above
 
 import psycopg                                          # noqa: E402
 from core.trust import audit                            # noqa: E402
@@ -168,7 +168,8 @@ check("corrupted document -> self-verify CATCHES it", t_corrupt_caught)
 def t_failed_state():
     with conn.cursor() as cur:
         cur.execute("SELECT status FROM jobs WHERE id = %s", (DIRTY["job"],))
-        assert cur.fetchone()[0] == "FAILED"
+        row = cur.fetchone()
+        assert row is not None and row[0] == "FAILED"
     ch = audit.chain(conn, DIRTY["job"])
     sv = [e for e in ch if e["step"] == "self-verify"][0]
     assert sv["detail"]["result"] == "FAIL"

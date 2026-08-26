@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from agentx.execution.providers.live_providers import LiveEmailProvider
+from agentx.execution.providers.base import ErrorCode
 
 ENV_KEYS = ("AGENT_X_SMTP_HOST", "AGENT_X_SMTP_PORT", "AGENT_X_SMTP_USER",
             "AGENT_X_SMTP_PASSWORD", "AGENT_X_SMTP_FROM", "AGENT_X_SMTP_TLS")
@@ -88,8 +89,9 @@ class TestConfiguration:
         from agentx.execution import providers
         providers.clear()
         providers.bootstrap(sandbox=False)
-        assert providers.get("live:smtp") is not None
-        assert providers.get("live:smtp").mode == "live"
+        registered = providers.get("live:smtp")
+        assert registered is not None
+        assert registered.mode == "live"
 
 
 class TestSendRefusesUnsafely:
@@ -113,6 +115,56 @@ class TestSendRefusesUnsafely:
         smtp.assert_not_called()
 
 
+class TestFailureTaxonomy:
+    """Retrying a wrong password sends the same wrong password again — the
+    taxonomy exists so runner.py's retry engine can tell that apart from a
+    dropped connection, which IS worth trying again."""
+
+    def test_auth_failure_is_not_retryable(self, monkeypatch):
+        import smtplib
+        _configure(monkeypatch)
+        p = LiveEmailProvider()
+        with patch("smtplib.SMTP") as smtp_cls:
+            smtp_cls.return_value.__enter__.return_value.login.side_effect = \
+                smtplib.SMTPAuthenticationError(535, b"bad credentials")
+            result = p.do_email({"to": "merchant@example.test", "body": "x"})
+        assert result.ok is False
+        assert result.error_code == ErrorCode.AUTH_REQUIRED
+        assert result.retryable is False
+        assert "reconnect" in result.message.lower()
+
+    def test_connection_failure_is_retryable(self, monkeypatch):
+        _configure(monkeypatch)
+        p = LiveEmailProvider()
+        with patch("smtplib.SMTP") as smtp_cls:
+            smtp_cls.return_value.__enter__.side_effect = ConnectionRefusedError("refused")
+            result = p.do_email({"to": "merchant@example.test", "body": "x"})
+        assert result.ok is False
+        assert result.error_code == ErrorCode.RETRYABLE
+        assert result.retryable is True
+
+    def test_timeout_is_classified_distinctly(self, monkeypatch):
+        _configure(monkeypatch)
+        p = LiveEmailProvider()
+        with patch("smtplib.SMTP") as smtp_cls:
+            smtp_cls.return_value.__enter__.side_effect = TimeoutError("timed out")
+            result = p.do_email({"to": "merchant@example.test", "body": "x"})
+        assert result.error_code == ErrorCode.TIMEOUT
+        assert result.retryable is True
+
+    def test_technical_detail_never_appears_in_the_user_facing_dict(self, monkeypatch):
+        import smtplib
+        _configure(monkeypatch)
+        p = LiveEmailProvider()
+        with patch("smtplib.SMTP") as smtp_cls:
+            smtp_cls.return_value.__enter__.return_value.login.side_effect = \
+                smtplib.SMTPAuthenticationError(535, b"bad credentials")
+            result = p.do_email({"to": "merchant@example.test", "body": "x"})
+        assert result.technical_detail is not None
+        assert "technical_detail" not in result.user_dict()
+        assert "technical_detail" in result.as_dict()
+
+
 class TestSendConstructsTheRightMessage:
     def test_starttls_path_sends_and_returns_live_mode(self, monkeypatch):
         _configure(monkeypatch)  # AGENT_X_SMTP_TLS unset -> STARTTLS path
@@ -129,6 +181,7 @@ class TestSendConstructsTheRightMessage:
         assert result.provider == "live:smtp"
         assert result.outcome == "accepted"
         assert result.external_ref  # a Message-ID was generated
+        assert result.evidence_text is not None
         assert "merchant@example.test" in result.evidence_text
         assert "50.00 GBP" in result.evidence_text
         mock_conn.starttls.assert_called_once()
@@ -194,6 +247,7 @@ class TestVerificationIsHonestlyAbsent:
         with store.connect() as conn:
             c = case_mod.create(conn, description="test", autonomy_level=4)
             c = case_mod.update(conn, c["id"], confidence=0.9)
+            assert c is not None
             mock_conn = MagicMock()
             with patch("smtplib.SMTP") as smtp_cls:
                 smtp_cls.return_value.__enter__.return_value = mock_conn

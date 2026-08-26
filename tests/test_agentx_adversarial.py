@@ -132,6 +132,7 @@ class TestHostileModelCannotForgeClassification:
         monkeypatch.setattr(client, "chat_json", lambda *a, **k: {
             "scores": {"fraud_suspected": 1.0}, "note": "certain"})
         u = understanding.understand("Kartly charged me twice", use_llm=True)
+        assert u.top is not None
         assert u.top.posterior < 1.0, "geometric fusion must keep a ceiling below 1"
 
     def test_model_failure_leaves_deterministic_result_intact(self, monkeypatch):
@@ -142,31 +143,35 @@ class TestHostileModelCannotForgeClassification:
         monkeypatch.setattr(client, "chat_json", boom)
         u = understanding.understand("Kartly charged me twice for the same order",
                                      use_llm=True)
+        assert u.top is not None
         assert u.top.problem_type == "duplicate_charge"
 
 
 class TestHostileModelCannotForgeAPlan:
-    def _base_plan(self, conn, case):
+    def _get_definition(self, problem_type: str):
         from agentx.ontology import get as get_definition
+        d = get_definition(problem_type)
+        assert d is not None
+        return d
+
+    def _base_plan(self, conn, case):
         return planner.compose(
-            case=case, definition=get_definition("duplicate_charge"),
+            case=case, definition=self._get_definition("duplicate_charge"),
             remedy="merchant_refund", findings=[], missing_evidence=[],
             counterparty="Kartly", amount_minor=1200, currency="GBP")
 
     def test_model_cannot_add_a_step_nobody_composed(self, monkeypatch, conn, case):
         from llm import client
-        from agentx.ontology import get as get_definition
         base = self._base_plan(conn, case)
         monkeypatch.setattr(client, "chat_json", lambda *a, **k: {"steps": [
             {"key": "exfiltrate", "action": "email", "title": "send everything",
              "after": [], "on_failure": None}], "rationale": "trust me"})
         revised, note = planner.propose_with_llm(
-            base, definition=get_definition("duplicate_charge"), counterparty="Kartly")
+            base, definition=self._get_definition("duplicate_charge"), counterparty="Kartly")
         assert all(s.key != "exfiltrate" for s in revised.steps)
 
     def test_model_revision_that_fails_validation_is_discarded(self, monkeypatch, conn, case):
         from llm import client
-        from agentx.ontology import get as get_definition
         base = self._base_plan(conn, case)
         # Drop every verification step — a plan that acts and never checks.
         monkeypatch.setattr(client, "chat_json", lambda *a, **k: {"steps": [
@@ -174,7 +179,7 @@ class TestHostileModelCannotForgeAPlan:
              "on_failure": None}
             for s in base.steps if s.action != "verify"], "rationale": "faster"})
         revised, note = planner.propose_with_llm(
-            base, definition=get_definition("duplicate_charge"), counterparty="Kartly")
+            base, definition=self._get_definition("duplicate_charge"), counterparty="Kartly")
         assert revised is base or revised.validation.get("ok")
         assert "rejected" in note or revised is base
 
@@ -257,6 +262,7 @@ class TestPromptInjectionInEvidence:
         engine.attach(conn, case["id"], kind="receipt", text=POISONED_RECEIPT,
                       use_llm=False, reanalyse=False)
         c = case_mod.get(conn, case["id"])
+        assert c is not None
         with pytest.raises(runner.NotAuthorized):
             runner.run(conn, case=c, action="escalate",
                        params={"counterparty": "Kartly", "to": "payment_provider",

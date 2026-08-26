@@ -36,6 +36,7 @@ import re
 import sqlite3
 import threading
 from contextlib import contextmanager
+from typing import Any, TypeVar, overload
 
 _MIGRATIONS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                "db", "migrations")
@@ -370,7 +371,19 @@ def jdump(obj) -> str:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str)
 
 
+_T = TypeVar("_T")
+
+
+@overload
+def jload(raw, default: _T) -> _T: ...
+@overload
+def jload(raw, default: None = None) -> Any: ...
 def jload(raw, default=None):
+    """Parse a stored JSON blob, or return `default` if absent/malformed.
+
+    `default`'s type also documents the expected shape — callers pass `{}` or
+    `[]` to say what they expect back, so the return type follows `default`.
+    """
     if raw in (None, ""):
         return default
     if isinstance(raw, (dict, list)):

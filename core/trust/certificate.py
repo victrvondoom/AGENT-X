@@ -197,6 +197,8 @@ def verify(env: dict, conn=None, trusted_public_key: str | None = None) -> dict:
         from cryptography.hazmat.primitives.asymmetric import ec
         try:
             key = serialization.load_pem_public_key(pub.encode())
+            if not isinstance(key, ec.EllipticCurvePublicKey):
+                raise TypeError(f"expected an EC public key, got {type(key).__name__}")
             key.verify(base64.b64decode(sig), canonical(cert), ec.ECDSA(hashes.SHA256()))
             out["checks"]["signature"] = {"ok": True, "detail": "valid ECDSA P-256"}
         except InvalidSignature:

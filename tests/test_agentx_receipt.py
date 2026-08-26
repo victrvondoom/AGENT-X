@@ -97,6 +97,7 @@ class TestReceipt:
     def test_persisted_receipt_is_served_byte_identical(self, conn, case):
         env1 = receipt.issue(conn, case["id"])
         env2 = receipt.latest(conn, case["id"])
+        assert env2 is not None
         assert env1["sha256"] == env2["sha256"]
 
 

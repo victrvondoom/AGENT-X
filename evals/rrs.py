@@ -116,7 +116,7 @@ def correctness():
         forget(s, WS)
 
     def account_surfaces(person, acct):
-        a = ask(f"What is {person}'s bank account number at Riverside Bank?", None, WS)
+        a, _sources = ask(f"What is {person}'s bank account number at Riverside Bank?", None, WS)
         return _alnum(acct) in _alnum(a)
 
     gone = sum(1 for _, person, acct, _ in forgotten if not account_surfaces(person, acct))
