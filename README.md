@@ -62,6 +62,9 @@ $\delta$ is the literal table at `agentx/case.py:37-65` — e.g. $\delta(\texttt
 
 **Why this matters to the implementation.** A case cannot, for example, move from `RESOLVED` back to `INVESTIGATING`, and cannot skip from `OPEN` directly to `ACTION_SUBMITTED` without an intervening `ACTION_REQUIRED`. This is what makes "what actually happened on this case" a well-defined question with one answer, rather than a question whose answer depends on which log line is trusted.
 
+<p align="center"><img src="docs/diagrams/state-machine.svg" width="720" alt="Structural skeleton of the case state machine"></p>
+<p align="center"><sub><b>Figure 1.</b> OPEN is the only entry point; seven working states are densely cross-connected (most transitions between them are legal in both directions); exactly three transitions lead out to a terminal state, and δ(s) = ∅ for all three — nothing re-enters. The full 30-edge transition table (§1, <code>agentx/case.py:37-65</code>) is exact; this figure shows the shape that table has.</sub></p>
+
 ### 2. Hypothesis Posterior (Incident Classification Under Ambiguity)
 
 **Motivation.** A narrative like *"I was charged twice"* is consistent with several problem types (duplicate charge, subscription renewal the claimant forgot, a held pre-authorization later captured). Committing to the single highest-scoring label discards exactly the information — how contested the classification is — that determines whether the system should proceed or ask a clarifying question. The system therefore computes a distribution, not a label.
@@ -87,6 +90,9 @@ p_{(1)} \ge 0.45 \quad\text{(}\texttt{DECISIVE\_FLOOR}\text{)} \qquad\text{and}\
 $$
 
 hold simultaneously (`agentx/understanding.py:56-57, 430-440`). The conjunction is deliberate: a high top score with a close runner-up (genuine rivalry between two plausible readings) and a comfortable margin over a low top score (thin evidence that happens to edge out an even thinner alternative) are both treated as ambiguous, for different reasons — a single-threshold test on the margin alone would miss the second case.
+
+<p align="center"><img src="docs/diagrams/hypothesis-posterior.svg" width="760" alt="Two computed posterior distributions, one decisive and one ambiguous"></p>
+<p align="center"><sub><b>Figure 2.</b> Both panels are computed from the actual formula above, not illustrative sketches. Left: a top posterior of 0.818 with a 0.696 margin clears both thresholds. Right: a top posterior of 0.477 clears the 0.45 floor alone, but its 0.099 margin over the runner-up fails the 0.22 test — this is exactly the case a floor-only rule would misclassify as decisive.</sub></p>
 
 **Optional second-stage fusion.** When an LLM classification is available, it is combined with the deterministic posterior above by the **geometric mean**, not a weighted average:
 
@@ -125,6 +131,9 @@ $$
 The sequence check ($\mathrm{seq}_i = i$) independently catches row deletion (a gap in the sequence), which a pure hash check alone would not — a deleted row simply isn't there to check. Verification returns the index of the *first* break found, `broken_at`, so a caller learns not just *that* tampering occurred but *where* the chain first diverges from what it should be. A single **chain digest** — one hash summarizing the entire chain — is separately computed as $\mathrm{SHA256}\big(\bigoplus_i \texttt{"seq|prev|content|detail"}_i\big)$ (`agentx/chain.py:201-211`) for cheap equality checks between two claimed copies of the same chain without re-verifying every link.
 
 **Why this is the correct primitive for the stated goal.** The chain does not prevent an operator with database access from deleting the *entire* history of a case — no purely additive log can. What it prevents is *undetected partial alteration*: changing one historical fact, one confidence value, or one state transition without also recomputing every hash after it, which requires knowing the chain was altered in the first place. Independent verification (`GET /api/agentx/cases/{case_id}/chain`) recomputes the full recurrence from stored data — it does not consult any separately-trusted log.
+
+<p align="center"><img src="docs/diagrams/hash-chain.svg" width="760" alt="Hash chain recurrence, showing an altered entry breaking every hash after it"></p>
+<p align="center"><sub><b>Figure 3.</b> Altering entry₂'s payload changes h₂, which changes the input to h₃'s hash — the break at position 2 propagates forward through every later entry, which is exactly what <code>verify()</code> detects and reports as <code>broken_at</code>. The bottom row shows the same recurrence with no alteration: every recomputed hash matches its stored value.</sub></p>
 
 ### 4. Confidence Aggregation (Noisy-OR)
 
@@ -201,6 +210,9 @@ Not a formula — an explicitly ordered rule evaluation, stated here as a relati
 | 4 | Autonomous under a written policy — permanent actions within an explicit ceiling/expiry/action-type policy |
 
 Evaluation order: **(1)** a blocking contradiction on the case refuses non-inspection actions outright; **(2)** confidence below a risk-class floor ($0.55$/$0.70$/$0.85$ for low/medium/high risk) refuses; **(3)** any irreversible, high-risk action *always* requires explicit per-action authorization, even under a level-4 standing grant; **(4)** a monetary amount exceeding the grant's ceiling (default $25{,}000$ minor units, e.g. \$250.00) requires authorization; **(5)** only after all four hold does a plain comparison $\text{level}_{\text{granted}} \ge \text{level}_{\text{required}}$ decide the outcome, where $\text{level}_{\text{required}} = \max(\text{capability's declared level},\ \{1,2,3\}[\text{risk class}])$. The ordering is the specification: a standing level-4 grant does not bypass gates (1)–(4).
+
+<p align="center"><img src="docs/diagrams/governor-gates.svg" width="640" alt="Five ordered governor gates; gates one through four can hold or refuse an action regardless of the granted autonomy level"></p>
+<p align="center"><sub><b>Figure 4.</b> A case granted level 4 (the highest standing autonomy) still has its action held at gate ③ if the action is irreversible and high-risk — the plain level comparison at gate ⑤ is the <i>last</i> check, not the only one, and cannot be reached by an action that fails an earlier gate.</sub></p>
 
 ---
 

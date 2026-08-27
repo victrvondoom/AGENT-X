@@ -1,0 +1,85 @@
+<svg viewBox="0 0 900 480" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two computed posterior distributions: a decisive case clearing both thresholds, and an ambiguous case that clears the floor but fails the margin test">
+  <rect width="900" height="480" fill="#0d1117"/>
+  <g font-family="ui-monospace, monospace" font-size="12">
+
+    <!-- ============ LEFT: decisive ============ -->
+    <text x="220" y="28" fill="#e6e6ef" text-anchor="middle" font-size="14">decisive: p₍₁₎ ≥ 0.45 AND margin ≥ 0.22</text>
+
+    <!-- axes -->
+    <line x1="60" y1="330" x2="60" y2="60" stroke="#4b4b58"/>
+    <line x1="60" y1="330" x2="400" y2="330" stroke="#4b4b58"/>
+    <text x="45" y="65" fill="#8b8ba0" font-size="10" text-anchor="end">1.0</text>
+    <text x="45" y="200" fill="#8b8ba0" font-size="10" text-anchor="end">0.5</text>
+    <text x="45" y="325" fill="#8b8ba0" font-size="10" text-anchor="end">0</text>
+
+    <!-- floor line at 0.45 -->
+    <line x1="60" y1="209" x2="400" y2="209" stroke="#eab308" stroke-width="1.2" stroke-dasharray="4 3"/>
+    <text x="405" y="213" fill="#fbbf24" font-size="10">floor 0.45</text>
+
+    <!-- bars (max height 270px = p 1.0) -->
+    <rect x="80" y="109" width="46" height="221" fill="#4ade80"/>
+    <text x="103" y="100" fill="#4ade80" text-anchor="middle" font-size="11">0.818</text>
+    <text x="103" y="345" fill="#a8a8b8" text-anchor="middle" font-size="9.5">duplicate</text>
+    <text x="103" y="357" fill="#a8a8b8" text-anchor="middle" font-size="9.5">_charge</text>
+
+    <rect x="140" y="297" width="46" height="33" fill="#60a5fa"/>
+    <text x="163" y="290" fill="#60a5fa" text-anchor="middle" font-size="11">0.122</text>
+    <text x="163" y="345" fill="#a8a8b8" text-anchor="middle" font-size="9.5">subscription</text>
+    <text x="163" y="357" fill="#a8a8b8" text-anchor="middle" font-size="9.5">_renewal</text>
+
+    <rect x="200" y="321" width="46" height="9" fill="#60a5fa" opacity="0.7"/>
+    <text x="223" y="345" fill="#a8a8b8" text-anchor="middle" font-size="9.5">fraud</text>
+    <text x="223" y="357" fill="#a8a8b8" text-anchor="middle" font-size="9.5">_suspected</text>
+
+    <rect x="260" y="326" width="46" height="4" fill="#60a5fa" opacity="0.5"/>
+    <text x="283" y="345" fill="#a8a8b8" text-anchor="middle" font-size="9.5">held</text>
+    <text x="283" y="357" fill="#a8a8b8" text-anchor="middle" font-size="9.5">_preauth</text>
+
+    <rect x="320" y="326" width="46" height="4" fill="#71717a" opacity="0.6"/>
+    <text x="343" y="345" fill="#71717a" text-anchor="middle" font-size="9.5">residual</text>
+    <text x="343" y="357" fill="#71717a" text-anchor="middle" font-size="9.5">(unknown)</text>
+
+    <text x="220" y="385" fill="#4ade80" text-anchor="middle" font-size="12">margin = 0.818 − 0.122 = 0.696 ≥ 0.22 ✓</text>
+    <text x="220" y="402" fill="#4ade80" text-anchor="middle" font-size="12">→ proceed without a clarifying question</text>
+
+    <!-- ============ RIGHT: ambiguous ============ -->
+    <text x="680" y="28" fill="#e6e6ef" text-anchor="middle" font-size="14">ambiguous: floor clears, margin fails</text>
+
+    <line x1="520" y1="330" x2="520" y2="60" stroke="#4b4b58"/>
+    <line x1="520" y1="330" x2="860" y2="330" stroke="#4b4b58"/>
+    <text x="505" y="65" fill="#8b8ba0" font-size="10" text-anchor="end">1.0</text>
+    <text x="505" y="200" fill="#8b8ba0" font-size="10" text-anchor="end">0.5</text>
+    <text x="505" y="325" fill="#8b8ba0" font-size="10" text-anchor="end">0</text>
+
+    <line x1="520" y1="209" x2="860" y2="209" stroke="#eab308" stroke-width="1.2" stroke-dasharray="4 3"/>
+    <text x="865" y="213" fill="#fbbf24" font-size="10">floor 0.45</text>
+
+    <!-- p1=0.4766 -> h=128.7, y=201.3 ; p2=0.3778 -> h=102, y=228 -->
+    <rect x="540" y="201" width="46" height="129" fill="#f87171"/>
+    <text x="563" y="192" fill="#f87171" text-anchor="middle" font-size="11">0.477</text>
+    <text x="563" y="345" fill="#a8a8b8" text-anchor="middle" font-size="9.5">duplicate</text>
+    <text x="563" y="357" fill="#a8a8b8" text-anchor="middle" font-size="9.5">_charge</text>
+
+    <rect x="600" y="228" width="46" height="102" fill="#f87171"/>
+    <text x="623" y="219" fill="#f87171" text-anchor="middle" font-size="11">0.378</text>
+    <text x="623" y="345" fill="#a8a8b8" text-anchor="middle" font-size="9.5">subscription</text>
+    <text x="623" y="357" fill="#a8a8b8" text-anchor="middle" font-size="9.5">_renewal</text>
+
+    <rect x="660" y="301" width="46" height="29" fill="#60a5fa"/>
+    <text x="683" y="294" fill="#60a5fa" text-anchor="middle" font-size="11">0.107</text>
+    <text x="683" y="345" fill="#a8a8b8" text-anchor="middle" font-size="9.5">held</text>
+    <text x="683" y="357" fill="#a8a8b8" text-anchor="middle" font-size="9.5">_preauth</text>
+
+    <rect x="720" y="320" width="46" height="10" fill="#71717a" opacity="0.6"/>
+    <text x="743" y="345" fill="#71717a" text-anchor="middle" font-size="9.5">residual</text>
+    <text x="743" y="357" fill="#71717a" text-anchor="middle" font-size="9.5">(unknown)</text>
+
+    <!-- bracket showing the thin margin between bar 1 and 2 -->
+    <line x1="600" y1="201" x2="586" y2="201" stroke="#fbbf24" stroke-width="1.2"/>
+    <line x1="600" y1="228" x2="586" y2="228" stroke="#fbbf24" stroke-width="1.2"/>
+    <line x1="592" y1="201" x2="592" y2="228" stroke="#fbbf24" stroke-width="1.2"/>
+
+    <text x="680" y="385" fill="#f87171" text-anchor="middle" font-size="12">margin = 0.477 − 0.378 = 0.099 &lt; 0.22 ✗</text>
+    <text x="680" y="402" fill="#f87171" text-anchor="middle" font-size="12">→ ask a clarifying question (floor alone would miss this)</text>
+  </g>
+</svg>

@@ -1,0 +1,103 @@
+<svg viewBox="0 0 900 460" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Structural skeleton of the case state machine: OPEN is the single entry point, seven working states form a densely cross-connected cluster, and three terminal states are the only exits — none of which any transition leads back out of">
+  <defs>
+    <marker id="arrS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6b6b76"/>
+    </marker>
+    <marker id="arrT" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+  </defs>
+  <rect width="900" height="460" fill="#0d1117"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+
+    <!-- entry -->
+    <rect x="30" y="195" width="90" height="46" rx="8" fill="#1c2333" stroke="#8b8ba0" stroke-width="1.5"/>
+    <text x="75" y="223" fill="#e6e6ef" text-anchor="middle" font-size="13">OPEN</text>
+    <text x="10" y="180" fill="#8b8ba0" font-size="11">single entry point</text>
+
+    <!-- working cluster: drawn as one bounded region with 7 nodes inside,
+         densely interconnected — represented as a mesh, not every individual
+         edge (30 edges among 7 nodes is unreadable; the mesh IS the claim) -->
+    <rect x="185" y="60" width="430" height="320" rx="16" fill="#161b26" stroke="#3a3a46" stroke-width="1.2" stroke-dasharray="5 4"/>
+    <text x="400" y="85" fill="#8b8ba0" font-size="12" text-anchor="middle">working states — densely cross-connected, most pairs reachable both ways</text>
+
+    <!-- mesh lines behind nodes, faint -->
+    <g stroke="#3a3a46" stroke-width="1">
+      <line x1="270" y1="150" x2="530" y2="150"/>
+      <line x1="270" y1="150" x2="400" y2="230"/>
+      <line x1="530" y1="150" x2="400" y2="230"/>
+      <line x1="270" y1="150" x2="270" y2="310"/>
+      <line x1="530" y1="150" x2="530" y2="310"/>
+      <line x1="270" y1="310" x2="400" y2="230"/>
+      <line x1="530" y1="310" x2="400" y2="230"/>
+      <line x1="270" y1="310" x2="530" y2="310"/>
+      <line x1="400" y1="230" x2="400" y2="345"/>
+      <line x1="270" y1="150" x2="530" y2="310"/>
+      <line x1="530" y1="150" x2="270" y2="310"/>
+    </g>
+
+    <g>
+      <rect x="225" y="130" width="90" height="40" rx="7" fill="#1c2333" stroke="#8b8ba0"/>
+      <text x="270" y="154" fill="#e6e6ef" text-anchor="middle" font-size="10.5">INVESTIGATING</text>
+    </g>
+    <g>
+      <rect x="485" y="130" width="90" height="40" rx="7" fill="#1c2333" stroke="#8b8ba0"/>
+      <text x="530" y="154" fill="#e6e6ef" text-anchor="middle" font-size="10.5">NEEDS_INPUT</text>
+    </g>
+    <g>
+      <rect x="355" y="210" width="90" height="40" rx="7" fill="#1c2333" stroke="#8b8ba0"/>
+      <text x="400" y="234" fill="#e6e6ef" text-anchor="middle" font-size="9.5">ACTION_REQUIRED</text>
+    </g>
+    <g>
+      <rect x="225" y="290" width="90" height="40" rx="7" fill="#1c2333" stroke="#8b8ba0"/>
+      <text x="270" y="310" fill="#e6e6ef" text-anchor="middle" font-size="9">ACTION_SUBMITTED</text>
+    </g>
+    <g>
+      <rect x="485" y="290" width="90" height="40" rx="7" fill="#1c2333" stroke="#8b8ba0"/>
+      <text x="530" y="310" fill="#e6e6ef" text-anchor="middle" font-size="9">WAITING_EXTERNAL</text>
+    </g>
+    <g>
+      <rect x="355" y="325" width="90" height="40" rx="7" fill="#1c2333" stroke="#8b8ba0"/>
+      <text x="400" y="345" fill="#e6e6ef" text-anchor="middle" font-size="8.5">FOLLOW_UP_REQUIRED</text>
+    </g>
+    <g>
+      <rect x="355" y="130" width="80" height="40" rx="7" fill="#1c2333" stroke="#8b8ba0"/>
+      <text x="395" y="154" fill="#e6e6ef" text-anchor="middle" font-size="10.5">ESCALATED</text>
+    </g>
+
+    <!-- OPEN -> cluster -->
+    <line x1="120" y1="210" x2="220" y2="150" stroke="#6b6b76" stroke-width="1.6" marker-end="url(#arrS)"/>
+    <line x1="120" y1="225" x2="220" y2="305" stroke="#6b6b76" stroke-width="1.6" marker-end="url(#arrS)"/>
+
+    <!-- OPEN -> WITHDRAWN direct -->
+    <path d="M55,241 C40,300 50,370 75,400" stroke="#6b6b76" stroke-width="1.6" fill="none" marker-end="url(#arrT)"/>
+
+    <!-- cluster -> 3 terminal states -->
+    <line x1="620" y1="130" x2="740" y2="80" stroke="#16a34a" stroke-width="1.8" marker-end="url(#arrT)"/>
+    <line x1="620" y1="250" x2="750" y2="220" stroke="#16a34a" stroke-width="1.8" marker-end="url(#arrT)"/>
+    <line x1="600" y1="345" x2="740" y2="380" stroke="#16a34a" stroke-width="1.8" marker-end="url(#arrT)"/>
+
+    <!-- terminal states -->
+    <rect x="745" y="55" width="130" height="46" rx="8" fill="#0f2318" stroke="#16a34a" stroke-width="2"/>
+    <text x="810" y="83" fill="#4ade80" text-anchor="middle" font-size="13">RESOLVED</text>
+
+    <rect x="755" y="197" width="135" height="46" rx="8" fill="#0f2318" stroke="#16a34a" stroke-width="2"/>
+    <text x="822" y="220" fill="#4ade80" text-anchor="middle" font-size="10.5">CLOSED_</text>
+    <text x="822" y="233" fill="#4ade80" text-anchor="middle" font-size="10.5">UNRESOLVED</text>
+
+    <rect x="745" y="357" width="130" height="46" rx="8" fill="#0f2318" stroke="#16a34a" stroke-width="2"/>
+    <text x="810" y="385" fill="#4ade80" text-anchor="middle" font-size="13">WITHDRAWN</text>
+
+    <text x="810" y="115" fill="#8b8ba0" font-size="11" text-anchor="middle">δ(s) = ∅</text>
+    <text x="822" y="260" fill="#8b8ba0" font-size="11" text-anchor="middle">no state ever</text>
+    <text x="822" y="272" fill="#8b8ba0" font-size="11" text-anchor="middle">re-enters here</text>
+
+    <!-- legend -->
+    <g font-size="11.5">
+      <line x1="30" y1="425" x2="65" y2="425" stroke="#6b6b76" stroke-width="1.6" marker-end="url(#arrS)"/>
+      <text x="75" y="429" fill="#a8a8b8">within/into working cluster</text>
+      <line x1="330" y1="425" x2="365" y2="425" stroke="#16a34a" stroke-width="1.8" marker-end="url(#arrT)"/>
+      <text x="375" y="429" fill="#a8a8b8">into a terminal state (one-way)</text>
+    </g>
+  </g>
+</svg>
