@@ -98,7 +98,7 @@ def _case_status_context(query: str, workspace: str) -> str | None:
     of describing a case that does not exist.
     """
     try:
-        from agentx import case as case_mod, engine, stages, store as axstore
+        from agentx import case as case_mod, engine, store as axstore
     except Exception:
         return None
     try:

@@ -11,6 +11,7 @@ node_modules/
 .ruff_cache/
 *.sqlite
 secrets/
+scratch/
 docs/_*.txt
 docs/_*.json
 

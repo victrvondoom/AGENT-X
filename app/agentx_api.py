@@ -33,10 +33,10 @@ from agentx import capabilities as caps
 from agentx import case as case_mod
 from agentx import chain, demo, documents, eligibility, engine, followup, governor, ids
 from agentx import knowledge, sentinel, speech, tracks
-from agentx import ontology, outcomes, planner, policy, receipt, sealing, store, understanding
+from agentx import ontology, outcomes, policy, receipt, sealing, store, understanding
 from agentx.evidence import contradiction, graph as egraph, package as pkg
 from agentx.execution import actions as A
-from agentx.execution import providers, runner
+from agentx.execution import providers
 from agentx.sandbox import world
 
 router = APIRouter(prefix="/api/agentx", tags=["agentx"])

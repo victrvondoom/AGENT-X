@@ -300,7 +300,6 @@ def investigate(conn, case_id: str, *, use_llm: bool = True) -> dict:
 
     # ── facts, contradictions, jurisdiction ───────────────────────────────
     contradiction.detect(conn, case_id)
-    contested = contradiction.contested_predicates(conn, case_id)
     blocking = contradiction.blocking(conn, case_id)
     base = egraph.fact_map(conn, case_id)
     facts = egraph.derived_facts(base)

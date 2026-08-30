@@ -29,11 +29,27 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-if not DATABASE_URL:
-    raise RuntimeError(
-        "DATABASE_URL is not set. Copy .env.example to .env, set your CockroachDB connection "
-        "string, then run: python scripts/init_db.py"
-    )
+
+
+def _is_unconfigured(dsn: str) -> bool:
+    """True when DATABASE_URL is absent or is the unfilled `.env.example` template.
+
+    `.env.example` ships DATABASE_URL as `postgresql://USER:PASSWORD@HOST:26257/...`
+    so `python-dotenv` loads a non-empty string that is not a real DSN. Treating
+    that as configured makes `pool()` build a live ConnectionPool whose background
+    worker loops on `getaddrinfo('HOST')` and prints connection errors to stderr,
+    even though every caller here already degrades gracefully to MockConnection.
+    This mirrors the identical check in `agentx/store.py`.
+    """
+    return not dsn or "USER:PASSWORD@HOST" in dsn or "@HOST:" in dsn
+
+
+# Not a hard failure: the module is imported by `app/main.py` at startup and the
+# whole storage layer is built to degrade to a read-only offline stand-in when no
+# database is reachable (see `connect()` and `MockConnection` below). A missing
+# DATABASE_URL is surfaced through `/api/health` (`database: offline`) and by
+# every write route answering 503 `written: false`, not by refusing to import.
+DATABASE_UNCONFIGURED = _is_unconfigured(DATABASE_URL)
 
 _pool: ConnectionPool | None = None
 
@@ -124,7 +140,16 @@ class MockConnection:
 
 
 def pool() -> ConnectionPool:
-    """Process-wide connection pool with fast timeout and lazy open."""
+    """Process-wide connection pool with fast timeout and lazy open.
+
+    Raises RuntimeError when no database is configured so `connect()` takes the
+    offline branch immediately instead of spawning a pool worker that loops on an
+    unresolvable host.
+    """
+    if DATABASE_UNCONFIGURED:
+        raise RuntimeError(
+            "DATABASE_URL is not configured (missing, or still the "
+            ".env.example template). Running in offline read-only mode.")
     global _pool
     if _pool is None:
         _pool = ConnectionPool(
