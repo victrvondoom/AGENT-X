@@ -1,0 +1,40 @@
+INFO:     Started server process [7488]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:58791 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49672 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49673 - "GET /app HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62777 - "GET /agentx HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62778 - "GET /api/agentx/tracks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62781 - "GET /api/agentx/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58373 - "POST /api/doc/demo-job HTTP/1.1" 503 Service Unavailable
+error connecting in 'pool-1': failed to resolve host 'HOST': [Errno 11001] getaddrinfo failed
+INFO:     127.0.0.1:58374 - "GET /api/doc/spine-data HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58375 - "GET /trustdoc HTTP/1.1" 200 OK
+error connecting in 'pool-1': failed to resolve host 'HOST': [Errno 11001] getaddrinfo failed
+error connecting in 'pool-1': failed to resolve host 'HOST': [Errno 11001] getaddrinfo failed
+error connecting in 'pool-1': failed to resolve host 'HOST': [Errno 11001] getaddrinfo failed
+INFO:     127.0.0.1:53404 - "GET /api/agentx/action-center?workspace=default HTTP/1.1" 200 OK
+error connecting in 'pool-1': failed to resolve host 'HOST': [Errno 11001] getaddrinfo failed
+INFO:     127.0.0.1:52208 - "GET /api/agentx/cases?workspace=default&limit=1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53321 - "GET /api/agentx/cases/PX-06775/evidence/bogus-id-123/text HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53322 - "GET /api/agentx/cases/PX-06775 HTTP/1.1" 200 OK
+error connecting in 'pool-1': failed to resolve host 'HOST': [Errno 11001] getaddrinfo failed
+INFO:     127.0.0.1:55024 - "GET /api/agentx/cases/PX-06775/evidence/ev-bf5f78f13a37/text HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55025 - "GET /api/agentx/cases/PX-81324/evidence/ev-bf5f78f13a37/text HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53947 - "GET /api/agentx/cases/PX-06775/evidence/ev-bf5f78f13a37 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53948 - "GET /api/agentx/cases/PX-81324/evidence/ev-bf5f78f13a37 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53949 - "GET /api/agentx/cases/PX-06775/evidence/bogus-id-123 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53950 - "GET /api/agentx/health HTTP/1.1" 200 OK
+error connecting in 'pool-1': failed to resolve host 'HOST': [Errno 11001] getaddrinfo failed
+error connecting in 'pool-1': failed to resolve host 'HOST': [Errno 11001] getaddrinfo failed
+INFO:     127.0.0.1:60774 - "GET /api/modes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60776 - "GET / HTTP/1.1" 200 OK
+error connecting in 'pool-1': failed to resolve host 'HOST': [Errno 11001] getaddrinfo failed
+error connecting in 'pool-1': failed to resolve host 'HOST': [Errno 11001] getaddrinfo failed
+reconnection attempt in pool 'pool-1' failed after 300.0 sec
+INFO:     127.0.0.1:63009 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62116 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62117 - "GET /app HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62118 - "GET /agentx HTTP/1.1" 200 OK

@@ -1,24 +1,12 @@
+# Everything in this repository is committed deliberately, including build
+# caches, the virtualenv and local databases.
+#
+# The three patterns below are the only exclusions, and they are not
+# preferences. AGENT_X_ROOT_KEY and the signing keys are the material that
+# makes this project's sealed receipts meaningful: published once, every
+# receipt ever issued becomes forgeable by anyone, and rotating the key does
+# not repair the past. .env additionally holds live AWS and LLM credentials.
+# This repository is public.
 .env
-.env.local
-.venv/
-venv/
-__pycache__/
-*.pyc
-.DS_Store
-*.log
-node_modules/
-.pytest_cache/
-.ruff_cache/
-*.sqlite
-secrets/
-scratch/
-docs/_*.txt
-docs/_*.json
-
-# Agent X local engine artefacts. The SQLite file holds sealed case data and the
-# keyfiles are the root/signing keys minted on first run when no env key is set
-# -- committing either would publish the material that makes crypto-shredding
-# meaningful.
-data/*.db
 *.rootkey
 *.signkey

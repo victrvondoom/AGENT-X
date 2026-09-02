@@ -1,0 +1,65 @@
+# Cloud Build -> Artifact Registry -> Cloud Run.
+#
+# Submitted with:
+#   gcloud builds submit --config deploy/cloudbuild.yaml \
+#     --substitutions=_REGION=us-central1,_SERVICE=sentinel-api
+#
+# Secrets are NOT baked into the image. GEMINI_API_KEY and NUTRIENT_API_KEY
+# are bound from Secret Manager at deploy time (--set-secrets below), so the
+# image itself stays free of credentials and can be pushed to a registry
+# without leaking anything.
+
+substitutions:
+  _REGION: us-central1
+  _SERVICE: sentinel-api
+  _REPO: sentinel
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest
+      - -f
+      - backend/Dockerfile
+      - backend
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: ["push", "--all-tags", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}"]
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      # Firestore + Pub/Sub are the Google Cloud infrastructure services the
+      # fleet actually runs on; flipping these two env vars is what moves the
+      # store and queue off the local filesystem backends.
+      - --set-env-vars=GCP_PROJECT_ID=$PROJECT_ID,SENTINEL_STORE_BACKEND=firestore,SENTINEL_QUEUE_BACKEND=pubsub,SENTINEL_ORCHESTRATOR=adk
+      - --set-secrets=GEMINI_API_KEY=gemini-api-key:latest,NUTRIENT_API_KEY=nutrient-api-key:latest
+      # Agent runs are long (real npm audit + sandboxed verification), so the
+      # default 300s request timeout is not enough for a synchronous scan.
+      - --timeout=900
+      - --memory=2Gi
+      - --cpu=2
+      # In-process findings cache and the enqueue dedup lock are per-instance
+      # state, so instances are kept few and warm rather than autoscaled wide.
+      - --min-instances=0
+      - --max-instances=4
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -61,7 +61,8 @@ app.include_router(agentx_router)
 # reason this is a try block rather than a plain import.
 for _mod, _label in (("agentx.subsystems.learning.routes", "learning"),
                      ("agentx.subsystems.infrastructure.routes", "infrastructure"),
-                     ("agentx.subsystems.observability.routes", "observability"),):
+                     ("agentx.subsystems.observability.routes", "observability"),
+                     ("agentx.subsystems.sentinel_x.routes", "sentinel_x"),):
     try:
         _cap = __import__(_mod, fromlist=["router"])
         app.include_router(_cap.router)

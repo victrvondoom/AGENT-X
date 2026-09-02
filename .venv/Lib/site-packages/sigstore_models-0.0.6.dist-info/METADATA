@@ -1,0 +1,41 @@
+Metadata-Version: 2.4
+Name: sigstore-models
+Version: 0.0.6
+Summary: Pydantic based models for Sigstore's protobuf specifications
+Author: William Woodruff
+Author-email: William Woodruff <william@astral.sh>
+License-File: LICENSE
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python :: 3
+Classifier: Typing :: Typed
+Classifier: Framework :: Pydantic :: 2
+Requires-Dist: pydantic>=2.12
+Requires-Dist: typing-extensions>=4.14.1
+Requires-Python: >=3.10
+Project-URL: Repository, https://github.com/astral-sh/sigstore-models
+Description-Content-Type: text/markdown
+
+# sigstore-models
+
+![PyPI - Version](https://img.shields.io/pypi/v/sigstore-models)
+
+Pydantic-based data models for Sigstore.
+
+These models mirror the subset of the [protobuf-specs] that
+are used by the [sigstore-python] library.
+
+## Goals
+
+* Providing high-quality, type-safe data models to [sigstore-python].
+* Matching Sigstore's (mostly protobuf influenced) JSON serialization
+  format.
+
+## Anti-goals
+
+* Supporting protobuf serialization/deserialization.
+* Doing anything besides mirroring a subset of the types in
+  [protobuf-specs].
+
+[protobuf-specs]: https://github.com/sigstore/protobuf-specs
+[sigstore-python]: https://github.com/sigstore/sigstore-python

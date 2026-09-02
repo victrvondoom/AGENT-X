@@ -1,7 +1,7 @@
 """
 Vendored subsystems — every capability must degrade alone, and say why.
 
-Seven separate codebases now live under `agentx/subsystems/`. The property that
+Eight separate codebases now live under `agentx/subsystems/`. The property that
 matters is not that they all work — several genuinely cannot on a machine with
 no GPU and no upstream services — but that:
 
@@ -22,7 +22,7 @@ import pytest
 from agentx import tracks
 
 SUBSYSTEMS = ("learning", "observability", "emergency", "infrastructure",
-              "model_studio", "safe_ops", "contracts")
+              "model_studio", "safe_ops", "contracts", "sentinel_x")
 
 
 # ─────────────────────────────────────────────── the contract every one keeps
@@ -179,3 +179,61 @@ def test_infrastructure_endpoint_rejects_an_empty_description():
     r = TestClient(app).post("/api/agentx/infrastructure/analyse",
                              json={"description": "   "})
     assert r.status_code == 400
+
+
+# ─────────────────────────────────────────────── sentinel_x, vendored last
+# It arrived reporting itself LIVE with no availability check at all, pointing
+# at a route that returned 404, and writing into the package tree because its
+# paths still assumed the source repository's backend/app/ layout. Each of
+# those is pinned below.
+def test_sentinel_x_reports_reasoning_and_repo_access_separately():
+    """A machine that can reason but cannot reach GitHub can still triage.
+    Collapsing that into one boolean would hide a usable capability."""
+    from agentx.subsystems import sentinel_x
+    state = sentinel_x.available()
+    assert isinstance(state["can_triage"], bool)
+    assert isinstance(state["can_open_pull_requests"], bool)
+    assert state["detail"]
+    # Never claims to open pull requests it has no credential for.
+    if state["can_open_pull_requests"]:
+        assert state["available"] is True
+
+
+def test_sentinel_x_paths_resolve_inside_the_repository_not_the_package():
+    """The vendored config anchored on parent.parent, which after the move
+    pointed at agentx/subsystems/ — loading a .env that does not exist and
+    scattering a workdir into the importable tree."""
+    from pathlib import Path
+    from agentx.subsystems.sentinel_x import config
+
+    assert config.BACKEND_DIR == Path(__file__).resolve().parents[1]
+    assert (config.BACKEND_DIR / ".env.example").exists()
+    assert "subsystems" not in config.WORKDIR.parts
+    assert config.WORKDIR.parent.name == "data"
+
+
+def test_checking_sentinel_x_availability_writes_nothing():
+    """Asking whether a capability is available must not create files. The
+    workdir mkdir and the Chroma client both used to run at import."""
+    import shutil
+    from agentx.subsystems.sentinel_x import config
+
+    existed = config.WORKDIR.exists()
+    if not existed:
+        importlib.import_module("agentx.subsystems.sentinel_x").available()
+        assert not config.WORKDIR.exists(),             "a status check created the working directory"
+    else:
+        # Already present from a real run; assert the call is still read-only.
+        before = sorted(p.name for p in config.WORKDIR.iterdir())
+        importlib.import_module("agentx.subsystems.sentinel_x").available()
+        assert sorted(p.name for p in config.WORKDIR.iterdir()) == before
+
+
+def test_the_vulnerability_track_route_actually_exists():
+    """The registry advertised /agentx/sentinel, which 404ed. A route in the
+    registry is a promise to the person reading it."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    track = next(t for t in tracks._TRACKS if t.id == "vulnerability_remediation")
+    assert TestClient(app).get(track.route).status_code == 200

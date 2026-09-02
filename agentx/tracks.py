@@ -219,6 +219,17 @@ _TRACKS: tuple[Track, ...] = (
         autonomy=THINK, module="agentx.chain", route="/verify",
         origin="agentx (native)",
         tags=("audit", "transparency")),
+    Track(
+        id="vulnerability_remediation",
+        name="Vulnerability Remediation",
+        summary="Find a vulnerable dependency, work out whether it can "
+                "actually be reached, and prepare the upgrade that fixes it.",
+        examples=("Is this vulnerable package actually exploitable here?",
+                  "Prepare the upgrade that fixes this advisory"),
+        autonomy=APPROVE, module="agentx.subsystems.sentinel_x",
+        route="/api/agentx/sentinel_x/status",
+        origin="SENTINEL (AppSec triage fleet), vendored whole",
+        tags=("security", "appsec", "remediation")),
 
     # ── declared, not yet connected ───────────────────────────────────────
     # Named here on purpose. A capability that exists in a source repository but

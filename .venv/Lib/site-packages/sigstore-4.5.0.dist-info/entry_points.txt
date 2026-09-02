@@ -1,0 +1,3 @@
+[console_scripts]
+sigstore=sigstore._cli:main
+

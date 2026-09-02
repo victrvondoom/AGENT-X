@@ -1,0 +1,17 @@
+[2025-12-14 11:36:51,684][oumi][rank0][pid:10644][AnyIO worker thread][INFO]][train.py:318] Training config saved to output/grpo_default/telemetry/training_config.yaml
+[2025-12-14 11:36:54,819][oumi][rank0][pid:10644][AnyIO worker thread][INFO]][models.py:544] Using the model's built-in chat template for model 'HuggingFaceTB/SmolLM2-135M-Instruct'.
+[2025-12-14 11:36:54,825][oumi][rank0][pid:10644][AnyIO worker thread][INFO]][base_map_dataset.py:91] Creating map dataset (type: Gsm8kGrpoDataset)... dataset_name: 'openai/gsm8k'
+[2025-12-14 11:37:01,147][oumi][rank0][pid:10644][AnyIO worker thread][INFO]][base_map_dataset.py:487] Dataset Info:
+	Split: train[:20]
+	Version: 0.0.0
+	Dataset size: 4676934
+	Download size: 2725633
+	Size: 7402567 bytes
+	Rows: 20
+	Columns: ['question', 'answer']
+[2025-12-14 11:37:01,024][oumi][rank0][pid:10644][AnyIO worker thread][INFO]][base_map_dataset.py:426] Loaded DataFrame with shape: (20, 2). Columns:
+question    object
+answer      object
+dtype: object
+[2025-12-14 11:37:01,298][oumi][rank0][pid:10644][AnyIO worker thread][INFO]][base_map_dataset.py:312] Gsm8kGrpoDataset: features=dict_keys(['data_source', 'prompt', 'ability', 'reward_model', 'extra_info'])
+[2025-12-14 11:37:01,347][oumi][rank0][pid:10644][AnyIO worker thread][INFO]][base_map_dataset.py:376] Finished transforming dataset (Gsm8kGrpoDataset)! Speed: 455.41 examples/sec. Examples: 20. Duration: 0.0 sec. Transform workers: 1.
